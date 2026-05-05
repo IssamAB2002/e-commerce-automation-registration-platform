@@ -486,109 +486,9 @@ const ProductsView = () => {
   );
 };
 
-// ─── CONVERSATION DETAIL MODAL ─────────────────────────────────────────────────
-const ConversationDetailModal = ({ conversation, onClose }) => {
-  if (!conversation) return null;
-  
-  const sentimentColor = { positive: D.green, neutral: D.cyan, negative: D.red };
-  const sentimentLabel = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
-  
-  // Extended mock data for the modal
-  const mockMessages = [
-    { id: 1, from: "customer", text: "Hello, I'm interested in the Summer Kaftan Collection. What colors are available?", time: "10:38 AM" },
-    { id: 2, from: "ai", text: "Hello! Thank you for your interest in our Summer Kaftan Collection. We have 8 beautiful colors available: White, Beige, Light Blue, Navy, Emerald Green, Coral, Lavender, and Black. Which color would you prefer?", time: "10:39 AM" },
-    { id: 3, from: "customer", text: "Do you have the navy blue in size L?", time: "10:40 AM" },
-    { id: 4, from: "ai", text: "Yes, we have the Navy Blue kaftan available in all sizes (S, M, L, XL). The price is 2,400 DA per piece. Would you like to place an order?", time: "10:41 AM" },
-    { id: 5, from: "customer", text: "Yes, I'd like to order 1 piece. Do you deliver to Constantine?", time: "10:42 AM" },
-  ];
-  
-  return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "rgba(4,8,15,0.82)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", padding: "1rem" }} onClick={onClose}>
-      <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 20, width: "100%", maxWidth: 640, padding: "1.8rem", position: "relative", maxHeight: "90vh", overflowY: "auto", animation: "fadeUp .35s ease" }} onClick={e => e.stopPropagation()}>
-        {/* Header */}
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: "1.5rem" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
-            <div style={{ width: 48, height: 48, borderRadius: 12, background: `rgba(${conversation.sentiment === "positive" ? "62,207,142" : conversation.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.15)`, border: `1px solid rgba(${conversation.sentiment === "positive" ? "62,207,142" : conversation.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.3)`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {conversation.sentiment === "positive" ? <CheckIc size={22} color={D.green} /> : conversation.sentiment === "negative" ? <CrossIc size={22} color={D.red} /> : <MsgIc size={22} color={D.cyan} />}
-            </div>
-            <div>
-              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.15rem", color: D.text }}>{conversation.sender}</div>
-              <div style={{ fontSize: ".78rem", color: D.muted, marginTop: ".15rem" }}>{conversation.date}</div>
-            </div>
-          </div>
-          <button onClick={onClose} style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 8, padding: ".4rem .55rem", color: D.muted, transition: "all .2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = D.red; e.currentTarget.style.color = D.red; }} onMouseLeave={e => { e.currentTarget.style.borderColor = D.border; e.currentTarget.style.color = D.muted; }}><CrossIc size={14} color="currentColor" /></button>
-        </div>
-        
-        {/* Topic & Sentiment */}
-        <div style={{ display: "flex", alignItems: "center", gap: ".75rem", marginBottom: "1.5rem", flexWrap: "wrap" }}>
-          <Badge label={conversation.topic} color={D.cyan} />
-          <Badge label={sentimentLabel[conversation.sentiment]} color={sentimentColor[conversation.sentiment]} />
-          <Badge label={`${conversation.turns} turns`} color={D.muted} />
-        </div>
-        
-        {/* Summary */}
-        <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 12, padding: "1.2rem", marginBottom: "1.5rem" }}>
-          <div style={{ fontSize: ".72rem", color: D.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", marginBottom: ".6rem" }}>Summary</div>
-          <div style={{ fontSize: ".9rem", color: D.text, fontWeight: 300, lineHeight: 1.65 }}>{conversation.outcome}</div>
-        </div>
-        
-        {/* Product Info */}
-        <div style={{ display: "flex", alignItems: "center", gap: ".75rem", marginBottom: "1.5rem", padding: "1rem", background: "rgba(255,107,43,0.06)", border: "1px solid rgba(255,107,43,0.15)", borderRadius: 10 }}>
-          <ProdIc size={18} color={D.orange} />
-          <span style={{ fontSize: ".88rem", color: D.text, fontWeight: 500 }}>{conversation.product}</span>
-        </div>
-        
-        {/* Message Timeline */}
-        <div style={{ marginBottom: "1.5rem" }}>
-          <div style={{ fontSize: ".72rem", color: D.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", marginBottom: "1rem" }}>Conversation Timeline</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: ".85rem" }}>
-            {mockMessages.map((msg, i) => (
-              <div key={msg.id} style={{ display: "flex", gap: ".85rem", animation: `fadeUp .4s ${i * 0.08}s ease both` }}>
-                <div style={{ width: 28, height: 28, borderRadius: 8, background: msg.from === "customer" ? "rgba(255,107,43,0.12)" : "rgba(0,212,255,0.12)", border: `1px solid ${msg.from === "customer" ? "rgba(255,107,43,0.25)" : "rgba(0,212,255,0.25)"}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                  {msg.from === "customer" ? <span style={{ fontSize: ".75rem" }}>👤</span> : <BotIc size={14} color={D.cyan} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: ".6rem", marginBottom: ".25rem" }}>
-                    <span style={{ fontSize: ".78rem", fontWeight: 600, color: msg.from === "customer" ? D.orange : D.cyan }}>{msg.from === "customer" ? "Customer" : "AI Assistant"}</span>
-                    <span style={{ fontSize: ".7rem", color: D.muted }}>{msg.time}</span>
-                  </div>
-                  <div style={{ fontSize: ".85rem", color: D.text, fontWeight: 300, lineHeight: 1.55 }}>{msg.text}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-        
-        {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: ".75rem" }}>
-          <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: ".85rem", textAlign: "center" }}>
-            <div style={{ fontSize: "1.5rem", fontFamily: "'Syne',sans-serif", fontWeight: 800, color: D.cyan }}>{conversation.turns}</div>
-            <div style={{ fontSize: ".7rem", color: D.muted, marginTop: ".2rem" }}>Total Turns</div>
-          </div>
-          <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: ".85rem", textAlign: "center" }}>
-            <div style={{ fontSize: "1.5rem", fontFamily: "'Syne',sans-serif", fontWeight: 800, color: D.green }}>~1.2s</div>
-            <div style={{ fontSize: ".7rem", color: D.muted, marginTop: ".2rem" }}>Avg Response</div>
-          </div>
-          <div style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, padding: ".85rem", textAlign: "center" }}>
-            <div style={{ fontSize: "1.5rem", fontFamily: "'Syne',sans-serif", fontWeight: 800, color: sentimentColor[conversation.sentiment] }}>{sentimentLabel[conversation.sentiment]}</div>
-            <div style={{ fontSize: ".7rem", color: D.muted, marginTop: ".2rem" }}>Sentiment</div>
-          </div>
-        </div>
-        
-        {/* Actions */}
-        <div style={{ display: "flex", gap: ".75rem", marginTop: "1.5rem" }}>
-          <button style={{ flex: 1, background: "transparent", border: `1px solid ${D.border}`, borderRadius: 9, padding: ".75rem", color: D.muted, fontSize: ".88rem", fontWeight: 500, transition: "all .2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = D.borderHi; e.currentTarget.style.color = D.text; }} onMouseLeave={e => { e.currentTarget.style.borderColor = D.border; e.currentTarget.style.color = D.muted; }}>View Full Chat</button>
-          <button style={{ flex: 1, background: `linear-gradient(135deg,${D.cyan},${D.cyanDim})`, border: "none", borderRadius: 9, padding: ".75rem", color: D.bg, fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".88rem", boxShadow: "0 0 18px rgba(0,212,255,0.22)", transition: "all .2s" }}>Export Details</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ─── CONVERSATIONS VIEW (summaries, not chat logs) ────────────────────────────
 const ConversationsView = () => {
   const [filter, setFilter] = useState("all");
-  const [selectedConversation, setSelectedConversation] = useState(null);
 
   const sentimentColor = { positive: D.green, neutral: D.cyan, negative: D.red };
   const sentimentLabel = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
@@ -597,7 +497,6 @@ const ConversationsView = () => {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem", animation: "fadeUp .5s ease" }}>
-      {selectedConversation && <ConversationDetailModal conversation={selectedConversation} onClose={() => setSelectedConversation(null)} />}
       {/* Stats row */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "1rem" }}>
         <StatCard label="Total Conversations" value={MOCK_CONVOS.length.toString()} sub="This month" color={D.cyan} icon={<MsgIc size={16} />} />
@@ -615,7 +514,7 @@ const ConversationsView = () => {
       {/* Conversation summary cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: ".85rem" }}>
         {filtered.map((c, i) => (
-          <div key={c.id} onClick={() => setSelectedConversation(c)} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "1.2rem 1.4rem", display: "flex", alignItems: "flex-start", gap: "1.2rem", transition: "all .2s", animation: `fadeUp .4s ${i * 0.06}s ease both`, cursor: "pointer" }} onMouseEnter={e => e.currentTarget.style.borderColor = D.borderHi} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
+          <div key={c.id} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "1.2rem 1.4rem", display: "flex", alignItems: "flex-start", gap: "1.2rem", transition: "all .2s", animation: `fadeUp .4s ${i * 0.06}s ease both` }} onMouseEnter={e => e.currentTarget.style.borderColor = D.borderHi} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
             {/* Sentiment dot */}
             <div style={{ width: 36, height: 36, borderRadius: 10, background: `rgba(${c.sentiment === "positive" ? "62,207,142" : c.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.1)`, border: `1px solid rgba(${c.sentiment === "positive" ? "62,207,142" : c.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.2)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
               {c.sentiment === "positive" ? <CheckIc size={16} color={D.green} /> : c.sentiment === "negative" ? <CrossIc size={16} color={D.red} /> : <MsgIc size={16} color={D.cyan} />}

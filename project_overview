@@ -1,0 +1,72 @@
+Project: AI Auto Facebook Messenger System
+What It Does (Current MVP)
+A Node.js/Express backend that connects Facebook Business Pages to an n8n automation workflow. The flow is:
+
+A client visits your app and clicks "Connect with Facebook"
+They authorize via Facebook OAuth — your app gets their Page access token
+You store the Page token in Supabase PostgreSQL
+When a customer messages that Facebook Page, Meta sends a webhook to your server
+Your server forwards the message payload (sender ID, text, page token) to an n8n workflow
+n8n handles the reply logic (e.g. GPT-powered auto-reply via Messenger API)
+Current Stack
+Layer	Tech
+Runtime	Node.js (CommonJS)
+Framework	Express v5
+Database	PostgreSQL via Supabase (pg pool)
+HTTP Client	Axios
+Automation	n8n (external, Railway-hosted)
+OAuth	Facebook Graph API v19.0
+Dev tunnel	ngrok
+What Exists (Working)
+server.js — Express app, landing page with "Connect Facebook" button
+routes/auth.js — Full OAuth flow (login → callback → store page token)
+routes/webhook.js — Webhook verify + message receive + forward to n8n
+db.js — PostgreSQL init with clients and subscription_codes tables
+routes/test.js — Stub endpoints for subscription code generation/validation
+What's Incomplete / Missing
+Multi-page selection — OAuth silently picks the first page; no UI to choose
+Subscription code system — Table exists, test routes don't touch the DB
+User sessions — No auth/session after OAuth; no way to manage clients post-connect
+Dashboard — No UI to see connected clients, disconnect, or view activity
+Error handling & retry — No retry if n8n is down, no structured error logging
+Rate limiting — No protection on webhook or API endpoints
+Logging — Only console.log, no structured logger (Winston/Pino)
+Tests — Zero test coverage
+DB migrations — Schema hardcoded in db.js, no migration system
+Prompt for an AI Coding Agent
+Here's a ready-to-use brief you can give to another agent:
+
+Build a production-ready Facebook Messenger Automation SaaS backend, expanding on this prototype:
+
+Core concept: Multi-tenant system where each "client" connects one or more Facebook Pages. When a customer messages a connected Page, the system forwards the message to an n8n webhook so the automation can reply via Messenger API.
+
+Tech stack: Node.js (ESM or CommonJS), Express or Fastify, PostgreSQL (Supabase), Axios, Facebook Graph API v19.0+.
+
+Features to build:
+
+OAuth flow (/auth/login → /auth/callback) — Facebook OAuth with scopes: pages_manage_metadata, pages_messaging, pages_read_engagement. After callback, fetch all user Pages via /me/accounts and let the user pick which page to connect (not just auto-pick the first one). Store user_id, page_id, page_name, page_token in a clients table.
+
+Webhook handler (GET /webhook for verification, POST /webhook for messages) — On each incoming message, look up which client owns that page_id, then forward { sender_id, recipient_id, message_text, timestamp, page_token } to the client's configured n8n_webhook_url. Always respond 200 immediately to Meta.
+
+Subscription code system — subscription_codes table with code, client_id, is_valid, expires_at. Endpoint to generate a code for a client, endpoint to validate a code (check DB, check expiry, mark used).
+
+Client management API — CRUD endpoints: list clients, get one client, update n8n webhook URL per client, disconnect (delete) a client.
+
+Admin dashboard (optional but valuable) — Simple HTML/React UI showing connected clients, their pages, last activity, subscription status.
+
+Structured error handling — Try/catch on all async routes, proper HTTP status codes, JSON error responses, retry logic (3 attempts with backoff) when forwarding to n8n fails.
+
+Logging — Use Winston or Pino. Log every webhook event, every forwarded message, every OAuth step.
+
+Rate limiting — Express rate limiter on all API endpoints, stricter limit on webhook endpoint.
+
+Database migrations — Use db-migrate or knex for schema versioning instead of hardcoded CREATE TABLE IF NOT EXISTS.
+
+Environment config — All secrets via .env (FB_APP_ID, FB_APP_SECRET, REDIRECT_URI, VERIFY_TOKEN, DATABASE_URL, PORT). Validate required vars on startup.
+
+DB schema (reference):
+
+
+clients(id, user_id, user_token, page_id, page_name, page_token, n8n_webhook_url, created_at)
+subscription_codes(id, code, client_id, is_valid, created_at, expires_at)
+Existing prototype for reference: The MVP has working OAuth, webhook receive/forward, and Supabase connection. Expand it without breaking the existing data contract.

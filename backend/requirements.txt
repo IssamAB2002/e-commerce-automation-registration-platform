@@ -1,1 +1,37 @@
-asgiref==3.11.1Django==6.0.4sqlparse==0.5.5tzdata==2026.1
+# Core
+Django==6.0.4
+djangorestframework==3.15.2
+psycopg2-binary==2.9.10
+django-environ==0.11.2
+
+# Auth
+djangorestframework-simplejwt==5.3.1
+django-cors-headers==4.4.0
+
+# Async
+celery==5.6.3
+redis==7.4.0
+django-celery-results==2.6.0
+django-celery-beat==2.9.0
+
+# File uploads & images
+django-storages==1.14.4
+Pillow==11.0.0
+
+# HTTP client (Make.com forwarding)
+httpx==0.28.1
+requests==2.32.3
+
+# AI (Claude API)
+anthropic==0.98.0
+
+# Utilities
+django-filter==25.2
+drf-spectacular==0.29.0
+django-redis==6.0.0
+whitenoise==6.8.2
+
+# Django deps
+asgiref==3.11.1
+sqlparse==0.5.1
+tzdata==2026.2
