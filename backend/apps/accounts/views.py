@@ -10,6 +10,7 @@ from django.shortcuts import redirect
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.throttling import AnonRateThrottle
 from rest_framework.views import APIView
 from .tokens import RefreshToken
 
@@ -32,8 +33,14 @@ def _jwt_for_user(user):
 
 # ── Auth Views ──────────────────────────────────────────────────────────────
 
+class AuthRateThrottle(AnonRateThrottle):
+    rate = '10/minute'
+    scope = 'auth'
+
+
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -54,6 +61,7 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
 
     def post(self, request):
         email = request.data.get('email', '').lower().strip()
@@ -209,19 +217,30 @@ class FacebookCallbackView(APIView):
                 user.avatar_url = avatar
             user.save(update_fields=['facebook_id', 'facebook_token', 'avatar_url'])
 
-        # Fetch and store Facebook Pages
+        # Fetch and store Facebook Pages — enforce ownership (one page per client)
         pages_resp = http_requests.get(
             f'https://graph.facebook.com/{settings.FB_GRAPH_VERSION}/me/accounts',
             params={'access_token': user_token},
             timeout=10,
         )
+        blocked_pages = []
         if pages_resp.status_code == 200:
             pages_data = pages_resp.json().get('data', [])
             try:
                 client_profile = user.profile
                 for page in pages_data:
+                    pid = page['id']
+                    existing = FacebookPage.objects.filter(page_id=pid).exclude(
+                        client=client_profile
+                    ).first()
+                    if existing:
+                        blocked_pages.append(page.get('name', pid))
+                        logger.warning(
+                            'Page %s already registered to a different client — skipping.', pid
+                        )
+                        continue
                     FacebookPage.objects.update_or_create(
-                        page_id=page['id'],
+                        page_id=pid,
                         defaults={
                             'client': client_profile,
                             'page_name': page.get('name', ''),
@@ -243,6 +262,9 @@ class FacebookCallbackView(APIView):
             f"{settings.FRONTEND_URL}?page={page_param}"
             f"&access={tokens['access']}&refresh={tokens['refresh']}"
         )
+        if blocked_pages:
+            from urllib.parse import quote
+            redirect_url += f"&blocked_pages={quote(','.join(blocked_pages))}"
         return redirect(redirect_url)
 
 
@@ -257,6 +279,17 @@ class FacebookPagesView(APIView):
     def post(self, request):
         """Connect a specific page (by page_id) to the client."""
         page_id = request.data.get('page_id')
+
+        # Block if this page is already owned by a different client
+        contested = FacebookPage.objects.filter(page_id=page_id).exclude(
+            client=request.user.profile
+        ).exists()
+        if contested:
+            return Response(
+                {'error': 'This Facebook Page is already registered to another account.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+
         try:
             page = FacebookPage.objects.get(page_id=page_id, client=request.user.profile)
             page.is_connected = True
@@ -344,3 +377,109 @@ class ClientGroupView(APIView):
             'n8n_webhook_url': group.n8n_webhook_url,
             'meta_app_id': group.meta_app_id,
         })
+
+
+# ── Password Change / Reset / Account Deletion ──────────────────────────────
+
+class ChangePasswordView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current = request.data.get('current_password', '')
+        new_pwd = request.data.get('new_password', '')
+
+        if not request.user.check_password(current):
+            return Response({'error': 'Current password is incorrect.'}, status=400)
+
+        if len(new_pwd) < 8:
+            return Response({'error': 'New password must be at least 8 characters.'}, status=400)
+
+        request.user.set_password(new_pwd)
+        request.user.save(update_fields=['password'])
+        return Response({'success': True, 'message': 'Password updated. Please log in again.'})
+
+
+class ForgotPasswordView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_bytes
+        from django.utils.http import urlsafe_base64_encode
+        from django.core.mail import send_mail
+        from django.conf import settings
+
+        email = request.data.get('email', '').lower().strip()
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            # Don't reveal whether an account exists
+            return Response({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
+
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        reset_url = f"{settings.FRONTEND_URL}?page=reset-password&uid={uid}&token={token}"
+
+        send_mail(
+            subject='EcomAuto — Reset your password',
+            message=f'Click the link below to reset your password:\n\n{reset_url}\n\nThis link expires in 24 hours.',
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[email],
+            fail_silently=False,
+        )
+        return Response({'success': True, 'message': 'If an account exists, a reset link has been sent.'})
+
+
+class ResetPasswordView(APIView):
+    permission_classes = [AllowAny]
+    throttle_classes = [AuthRateThrottle]
+
+    def post(self, request):
+        from django.contrib.auth.tokens import default_token_generator
+        from django.utils.encoding import force_str
+        from django.utils.http import urlsafe_base64_decode
+
+        uid = request.data.get('uid', '')
+        token = request.data.get('token', '')
+        new_password = request.data.get('new_password', '')
+
+        if len(new_password) < 8:
+            return Response({'error': 'Password must be at least 8 characters.'}, status=400)
+
+        try:
+            user_pk = force_str(urlsafe_base64_decode(uid))
+            user = User.objects.get(pk=user_pk)
+        except Exception:
+            return Response({'error': 'Invalid reset link.'}, status=400)
+
+        if not default_token_generator.check_token(user, token):
+            return Response({'error': 'Reset link is invalid or has expired.'}, status=400)
+
+        user.set_password(new_password)
+        user.save(update_fields=['password'])
+        return Response({'success': True, 'message': 'Password reset successfully. You can now log in.'})
+
+
+class DeleteAccountView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request):
+        password = request.data.get('password', '')
+        if not request.user.check_password(password):
+            return Response({'error': 'Password is incorrect.'}, status=400)
+
+        user = request.user
+        user.is_active = False
+        user.save(update_fields=['is_active'])
+        # Soft-delete: deactivate account. Hard delete can be added if required.
+        from apps.activity.models import ActivityLog
+        try:
+            ActivityLog.objects.create(
+                client=user.profile,
+                action_type='page_disconnected',
+                description='Account deletion requested by user.',
+            )
+        except Exception:
+            pass
+        return Response({'success': True, 'message': 'Account deactivated. Contact support to permanently delete data.'})

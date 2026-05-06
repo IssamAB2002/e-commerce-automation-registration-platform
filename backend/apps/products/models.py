@@ -39,3 +39,29 @@ class Product(models.Model):
 
     def __str__(self):
         return f'{self.name} ({self.client})'
+
+
+ALLOWED_EXTENSIONS_BY_PLAN = {
+    'starter': ['.txt'],
+    'growth': ['.txt', '.pdf', '.doc', '.docx'],
+    'pro': ['.txt', '.pdf', '.doc', '.docx', '.csv', '.xls', '.xlsx', '.json'],
+}
+
+
+class ProductFile(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    product = models.ForeignKey(Product, on_delete=models.CASCADE, related_name='files')
+    client = models.ForeignKey(
+        'accounts.ClientProfile', on_delete=models.CASCADE, related_name='product_files'
+    )
+    file = models.FileField(upload_to='product_files/%Y/%m/')
+    original_name = models.CharField(max_length=255)
+    file_size = models.BigIntegerField()
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'product_files'
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return f'{self.original_name} ({self.product.name})'

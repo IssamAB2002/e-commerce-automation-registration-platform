@@ -57,21 +57,28 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS(f'{status} plan: {plan.get_name_display()}'))
 
     def _seed_group(self):
-        if Group.objects.exists():
-            self.stdout.write('Groups already exist — skipping.')
-            return
-
         n8n_url = getattr(settings, 'N8N_DEFAULT_WEBHOOK', '')
-        group = Group.objects.create(
-            name='Alpha',
-            capacity=15,
-            n8n_webhook_url=n8n_url,
-            meta_app_id='',
-        )
-        self.stdout.write(self.style.SUCCESS(f'Created initial group: {group.name}'))
+        tiers = [Group.STARTER, Group.GROWTH, Group.PRO]
+        prefixes = {'starter': 'S', 'growth': 'G', 'pro': 'P'}
+
+        for tier in tiers:
+            prefix = prefixes[tier]
+            name = f'{prefix}-Alpha'
+            group, created = Group.objects.get_or_create(
+                name=name,
+                defaults={
+                    'plan_tier': tier,
+                    'capacity': 15,
+                    'n8n_webhook_url': n8n_url,
+                    'meta_app_id': '',
+                },
+            )
+            status = 'Created' if created else 'Already exists'
+            self.stdout.write(self.style.SUCCESS(f'{status}: group {group.name} ({tier})'))
+
         self.stdout.write(
             self.style.WARNING(
-                'Remember to set the n8n webhook URL and Meta App ID for group Alpha '
+                'Remember to set the n8n webhook URL and Meta App ID for each group '
                 'in the Django admin or via the N8N_DEFAULT_WEBHOOK env variable.'
             )
         )

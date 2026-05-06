@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import {
-  fetchProfile, fetchProducts, fetchConversations, fetchActivity,
+  fetchProfile, fetchProducts, fetchConversations, fetchActivity, fetchActivitySummary,
+  fetchOrders, fetchOrderStats, updateOrderStatus,
+  fetchProductFiles, uploadProductFile, deleteProductFile,
+  toggleActivationCode, fetchPaymentRequests,
   createProduct, deleteProduct, toggleProductStatus, generateDescription,
-  transformProfile, transformProducts, transformConversations, transformActivity,
+  transformProfile, transformProducts, transformConversations, transformActivity, transformOrders,
 } from "../../api/dashboard.js";
 import { logout } from "../../api/auth.js";
 
@@ -246,14 +249,71 @@ const ProductModal = ({ onClose, onSave }) => {
   );
 };
 
+// ─── PAYMENTS HISTORY VIEW ─────────────────────────────────────────────────────
+const PaymentsView = () => {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" };
+  const STATUS_COLOR = { pending: D.orange, confirmed: D.green, rejected: D.red };
+
+  useEffect(() => {
+    fetchPaymentRequests()
+      .then(d => setRequests(d?.results || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem", animation: "fadeUp .5s ease" }}>
+      <div style={{ background: "rgba(62,207,142,0.04)", border: "1px solid rgba(62,207,142,0.15)", borderRadius: 12, padding: "1rem 1.3rem", display: "flex", alignItems: "center", gap: ".9rem" }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(62,207,142,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, fontSize: "1rem" }}>💳</div>
+        <div>
+          <div style={{ fontSize: ".85rem", fontWeight: 500, color: D.text, marginBottom: ".15rem" }}>Payment History</div>
+          <div style={{ fontSize: ".78rem", color: D.muted, fontWeight: 300 }}>Track all your subscription payment requests and their status.</div>
+        </div>
+      </div>
+
+      <div style={card}>
+        <SectionHead icon={<svg width={16} height={16} viewBox="0 0 16 16" fill="none"><rect x={2} y={3} width={12} height={10} rx={2} stroke={D.green} strokeWidth={1.4} /><path d="M2 6.5h12" stroke={D.green} strokeWidth={1.4} /></svg>} title="Payment Requests" action={<Badge label={`${requests.length} request${requests.length !== 1 ? 's' : ''}`} color={D.muted} />} />
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "2rem", color: D.muted }}>Loading...</div>
+        ) : requests.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "2.5rem", color: D.muted, fontSize: ".85rem", fontWeight: 300 }}>No payment requests yet. Go to the Pricing page to submit a payment.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+            {requests.map((pr, i) => (
+              <div key={pr.id} style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 12, padding: "1rem 1.2rem", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap", animation: `fadeUp .4s ${i * 0.05}s ease both` }}>
+                <div>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".9rem", color: D.text, marginBottom: ".25rem", textTransform: "capitalize" }}>{pr.plan} — {pr.billing_cycle}</div>
+                  <div style={{ fontSize: ".78rem", color: D.muted }}>Ref: {pr.transfer_reference}</div>
+                  <div style={{ fontSize: ".72rem", color: D.muted, marginTop: ".15rem" }}>{pr.submitted_at ? new Date(pr.submitted_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '—'}</div>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: ".4rem" }}>
+                  <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: ".95rem", color: D.orange }}>{Number(pr.amount_dzd).toLocaleString()} DZD</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: ".4rem", padding: ".25rem .65rem", borderRadius: 100, background: `rgba(${pr.status === 'confirmed' ? '62,207,142' : pr.status === 'rejected' ? '240,95,95' : '255,107,43'},0.1)`, border: `1px solid ${STATUS_COLOR[pr.status] || D.border}` }}>
+                    <span style={{ width: 5, height: 5, borderRadius: "50%", background: STATUS_COLOR[pr.status] || D.muted, display: "inline-block" }} />
+                    <span style={{ fontSize: ".72rem", fontWeight: 600, color: STATUS_COLOR[pr.status] || D.muted, textTransform: "capitalize" }}>{pr.status}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ─── SIDEBAR ───────────────────────────────────────────────────────────────────
 const SIDEBAR_ITEMS = [
   { id: "overview",       label: "Overview",       icon: <StoreIc size={16} /> },
   { id: "products",       label: "My Products",    icon: <ProdIc size={16} /> },
   { id: "conversations",  label: "Conversations",  icon: <MsgIc size={16} /> },
+  { id: "orders",         label: "Orders (CRM)",   icon: <ProdIc size={16} /> },
   { id: "data",           label: "Knowledge Base", icon: <DataIc size={16} /> },
   { id: "usecode",        label: "Use Code",       icon: <KeyIc size={16} /> },
   { id: "workflow",       label: "Automation",     icon: <FlowIc size={16} /> },
+  { id: "payments",       label: "Payments",       icon: <svg width={16} height={16} viewBox="0 0 16 16" fill="none"><rect x={2} y={3} width={12} height={10} rx={2} stroke="currentColor" strokeWidth={1.4} /><path d="M2 6.5h12" stroke="currentColor" strokeWidth={1.4} /></svg> },
 ];
 
 const Sidebar = ({ active, onChange }) => {
@@ -331,7 +391,16 @@ const TopBar = ({ pageTitle, pageSubtitle }) => {
 const OverviewView = ({ setActiveTab }) => {
   const { client, products, activity } = useDash();
   const [copied, setCopied] = useState(false);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
   const copyCode = () => { navigator.clipboard?.writeText(client.useCode).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+
+  useEffect(() => {
+    fetchActivitySummary()
+      .then(d => setAiSummary(d?.summary || d?.text || null))
+      .catch(() => setAiSummary(null))
+      .finally(() => setSummaryLoading(false));
+  }, []);
   const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" };
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", animation: "fadeUp .5s ease" }}>
@@ -411,17 +480,33 @@ const OverviewView = ({ setActiveTab }) => {
         </div>
       </div>
 
-      {/* Activity */}
-      <div style={card}>
-        <SectionHead icon={<svg width={16} height={16} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={2.5} stroke={D.green} strokeWidth={1.4} /><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke={D.green} strokeWidth={1.4} strokeLinecap="round" /></svg>} title="Recent Activity" action={<button onClick={() => setActiveTab("conversations")} style={{ background: "none", border: "none", color: D.cyan, fontSize: ".78rem", fontWeight: 600, cursor: "pointer" }}>View all →</button>} />
-        <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-          {activity.map((a, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: ".75rem", padding: ".55rem .7rem", borderRadius: 9, transition: "background .15s" }} onMouseEnter={e => e.currentTarget.style.background = D.surface2} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <div style={{ width: 7, height: 7, borderRadius: "50%", background: a.color, marginTop: ".45rem", flexShrink: 0 }} />
-              <span style={{ fontSize: ".82rem", color: D.text, fontWeight: 300, flex: 1, lineHeight: 1.55 }}>{a.text}</span>
-              <span style={{ fontSize: ".72rem", color: D.muted, flexShrink: 0, marginTop: ".05rem" }}>{a.time}</span>
+      {/* Activity + AI Summary */}
+      <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: "1.2rem" }}>
+        <div style={card}>
+          <SectionHead icon={<svg width={16} height={16} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={2.5} stroke={D.green} strokeWidth={1.4} /><path d="M8 1v3M8 12v3M1 8h3M12 8h3" stroke={D.green} strokeWidth={1.4} strokeLinecap="round" /></svg>} title="Recent Activity" action={<button onClick={() => setActiveTab("conversations")} style={{ background: "none", border: "none", color: D.cyan, fontSize: ".78rem", fontWeight: 600, cursor: "pointer" }}>View all →</button>} />
+          <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
+            {activity.map((a, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: ".75rem", padding: ".55rem .7rem", borderRadius: 9, transition: "background .15s" }} onMouseEnter={e => e.currentTarget.style.background = D.surface2} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                <div style={{ width: 7, height: 7, borderRadius: "50%", background: a.color, marginTop: ".45rem", flexShrink: 0 }} />
+                <span style={{ fontSize: ".82rem", color: D.text, fontWeight: 300, flex: 1, lineHeight: 1.55 }}>{a.text}</span>
+                <span style={{ fontSize: ".72rem", color: D.muted, flexShrink: 0, marginTop: ".05rem" }}>{a.time}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* AI Activity Summary */}
+        <div style={{ ...card, display: "flex", flexDirection: "column", gap: "1rem" }}>
+          <SectionHead icon={<BotIc size={16} color={D.purple} />} title="AI Summary" action={<Badge label="Gemini" color={D.purple} />} />
+          {summaryLoading ? (
+            <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div style={{ width: 20, height: 20, border: `2px solid ${D.border}`, borderTopColor: D.purple, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
             </div>
-          ))}
+          ) : aiSummary ? (
+            <div style={{ fontSize: ".82rem", color: D.muted, fontWeight: 300, lineHeight: 1.7 }}>{aiSummary}</div>
+          ) : (
+            <div style={{ fontSize: ".8rem", color: D.border, fontStyle: "italic", lineHeight: 1.6 }}>No activity summary available yet. It will appear once you have some activity.</div>
+          )}
         </div>
       </div>
     </div>
@@ -658,35 +743,82 @@ const ConversationsView = () => {
 const DataView = () => {
   const { client, products } = useDash();
   const planLimits = PLAN_LIMITS[client.plan] || PLAN_LIMITS.Growth;
-  const [files, setFiles] = useState([
-    { id: 1, name: "kaftan-sizing-guide.pdf", type: "pdf", sizeMB: 1.2, product: "Summer Kaftan Collection", uploadedAt: "Apr 10, 2025" },
-    { id: 2, name: "handbag-faq.txt",          type: "txt", sizeMB: 0.1, product: "Leather Handbag Set",    uploadedAt: "Apr 12, 2025" },
-    { id: 3, name: "kaftan-colors.jpg",         type: "jpg", sizeMB: 2.4, product: "Summer Kaftan Collection", uploadedAt: "Apr 14, 2025" },
-  ]);
+  const [files, setFiles] = useState([]);
   const [dragging, setDragging] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(products[0]?.name ?? "");
+  const [selectedProductId, setSelectedProductId] = useState(products[0]?.id ?? "");
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState(null);
   const fileInputRef = useRef(null);
+
+  const selectedProduct = products.find(p => String(p.id) === String(selectedProductId));
+
+  useEffect(() => {
+    if (!selectedProductId) return;
+    setFiles([]);
+    fetchProductFiles(selectedProductId)
+      .then(data => {
+        const results = data?.results ?? (Array.isArray(data) ? data : []);
+        setFiles(results.map(f => ({
+          id: f.id,
+          name: f.original_name,
+          type: f.original_name.split(".").pop().toLowerCase(),
+          sizeMB: parseFloat((f.file_size / 1048576).toFixed(2)),
+          product: selectedProduct?.name ?? "—",
+          uploadedAt: f.uploaded_at ? new Date(f.uploaded_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—",
+        })));
+      })
+      .catch(() => {});
+  }, [selectedProductId]);
+
   const usedMB = files.reduce((s, f) => s + f.sizeMB, 0);
-  const usedPct = Math.round((usedMB / planLimits.maxMB) * 100);
+  const usedPct = Math.min(100, Math.round((usedMB / planLimits.maxMB) * 100));
 
   const typeColor = { pdf: D.red, txt: D.cyan, doc: D.purple, docx: D.purple, xlsx: D.green, jpg: D.orange, jpeg: D.orange, png: D.orange, gif: D.orange };
-  const typeIcon = { pdf: "📄", txt: "📝", doc: "📘", docx: "📘", xlsx: "📊", jpg: "🖼️", jpeg: "🖼️", png: "🖼️", gif: "🖼️" };
+  const typeIcon  = { pdf: "📄", txt: "📝", doc: "📘", docx: "📘", xlsx: "📊", jpg: "🖼️", jpeg: "🖼️", png: "🖼️", gif: "🖼️" };
 
-  const handleFiles = (incoming) => {
+  const handleFiles = async (incoming) => {
     setError(null);
+    if (!selectedProductId) { setError("Select a product first."); return; }
     for (const f of incoming) {
       const ext = f.name.split(".").pop().toLowerCase();
       if (!planLimits.allowedTypes.includes(ext)) { setError(`File type .${ext} is not allowed on your ${client.plan} plan.`); return; }
       if (files.length >= planLimits.maxFiles) { setError(`You've reached the ${planLimits.maxFiles}-file limit on your ${client.plan} plan. Upgrade to add more.`); return; }
       const sizeMB = parseFloat((f.size / 1048576).toFixed(2));
       if (usedMB + sizeMB > planLimits.maxMB) { setError(`Not enough storage. Your plan allows ${planLimits.maxMB} MB.`); return; }
-      setFiles(prev => [...prev, { id: Date.now() + Math.random(), name: f.name, type: ext, sizeMB, product: selectedProduct, uploadedAt: "Just now" }]);
+
+      setUploading(true);
+      try {
+        const formData = new FormData();
+        formData.append("file", f);
+        const created = await uploadProductFile(selectedProductId, formData);
+        setFiles(prev => [...prev, {
+          id: created.id,
+          name: created.original_name,
+          type: created.original_name.split(".").pop().toLowerCase(),
+          sizeMB: parseFloat((created.file_size / 1048576).toFixed(2)),
+          product: selectedProduct?.name ?? "—",
+          uploadedAt: "Just now",
+        }]);
+      } catch (e) {
+        const msg = await e?.json?.().then(d => d?.error).catch(() => null);
+        setError(msg || "Upload failed. Check your plan limits.");
+      } finally {
+        setUploading(false);
+      }
+    }
+  };
+
+  const handleDelete = async (productId, fileId) => {
+    try {
+      await deleteProductFile(productId, fileId);
+      setFiles(prev => prev.filter(x => x.id !== fileId));
+    } catch (e) {
+      setError("Failed to delete file.");
     }
   };
 
   const onDrop = (e) => { e.preventDefault(); setDragging(false); handleFiles([...e.dataTransfer.files]); };
-  const onPick  = (e) => { if (e.target.files?.length) handleFiles([...e.target.files]); };
+  const onPick = (e) => { if (e.target.files?.length) handleFiles([...e.target.files]); };
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem", animation: "fadeUp .5s ease" }}>
@@ -721,17 +853,18 @@ const DataView = () => {
         {/* Product selector */}
         <div style={{ marginBottom: "1rem" }}>
           <label style={{ fontSize: ".75rem", color: D.muted, fontWeight: 500, letterSpacing: ".05em", textTransform: "uppercase", display: "block", marginBottom: ".4rem" }}>Link to Product *</label>
-          <select value={selectedProduct} onChange={e => setSelectedProduct(e.target.value)} style={{ width: "100%", maxWidth: 340, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 8, padding: ".65rem 1rem", color: D.text, fontSize: ".88rem", cursor: "pointer" }}>
-            {products.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+          <select value={selectedProductId} onChange={e => setSelectedProductId(e.target.value)} style={{ width: "100%", maxWidth: 340, background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 8, padding: ".65rem 1rem", color: D.text, fontSize: ".88rem", cursor: "pointer" }}>
+            {products.length === 0 && <option value="">No products — add one first</option>}
+            {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
         </div>
 
         {/* Drop zone */}
-        <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop} onClick={() => fileInputRef.current?.click()} style={{ border: `2px dashed ${dragging ? D.cyan : D.border}`, borderRadius: 14, padding: "2rem", textAlign: "center", cursor: "pointer", transition: "all .2s", background: dragging ? "rgba(0,212,255,0.04)" : D.surface2 }}>
+        <div onDragOver={e => { e.preventDefault(); setDragging(true); }} onDragLeave={() => setDragging(false)} onDrop={onDrop} onClick={() => fileInputRef.current?.click()} style={{ border: `2px dashed ${dragging ? D.cyan : D.border}`, borderRadius: 14, padding: "2rem", textAlign: "center", cursor: uploading ? "wait" : "pointer", transition: "all .2s", background: dragging ? "rgba(0,212,255,0.04)" : D.surface2, opacity: uploading ? 0.6 : 1 }}>
           <UploadIc size={28} color={dragging ? D.cyan : D.muted} />
-          <div style={{ fontSize: ".88rem", color: dragging ? D.cyan : D.muted, marginTop: ".7rem", fontWeight: 400 }}>Drag & drop here or <span style={{ color: D.cyan }}>browse files</span></div>
+          <div style={{ fontSize: ".88rem", color: dragging ? D.cyan : D.muted, marginTop: ".7rem", fontWeight: 400 }}>{uploading ? "Uploading…" : <>Drag & drop here or <span style={{ color: D.cyan }}>browse files</span></>}</div>
           <div style={{ fontSize: ".75rem", color: D.muted, marginTop: ".35rem", fontWeight: 300 }}>Allowed: {planLimits.allowedTypes.map(t => `.${t}`).join(", ")} — max {planLimits.maxMB} MB total</div>
-          <input ref={fileInputRef} type="file" multiple accept={planLimits.allowedTypes.map(t => `.${t}`).join(",")} style={{ display: "none" }} onChange={onPick} />
+          <input ref={fileInputRef} type="file" multiple accept={planLimits.allowedTypes.map(t => `.${t}`).join(",")} style={{ display: "none" }} onChange={onPick} disabled={uploading} />
         </div>
 
         {error && (
@@ -746,14 +879,12 @@ const DataView = () => {
       <div style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" }}>
         <SectionHead icon={<ProdIc size={16} color={D.orange} />} title="Uploaded Files" action={<Badge label={`${files.length} files`} color={D.muted} />} />
         {files.length === 0
-          ? <div style={{ textAlign: "center", padding: "2rem", color: D.muted, fontSize: ".85rem", fontWeight: 300 }}>No files uploaded yet. Upload your first file above.</div>
+          ? <div style={{ textAlign: "center", padding: "2rem", color: D.muted, fontSize: ".85rem", fontWeight: 300 }}>No files uploaded yet for this product.</div>
           : (
             <div style={{ display: "flex", flexDirection: "column", gap: ".65rem" }}>
               {files.map((f, i) => (
                 <div key={f.id} style={{ display: "flex", alignItems: "center", gap: "1rem", padding: ".85rem 1rem", background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10, transition: "all .2s", animation: `fadeUp .4s ${i * 0.05}s ease both` }} onMouseEnter={e => e.currentTarget.style.borderColor = D.borderHi} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
-                  {/* Icon */}
                   <div style={{ width: 36, height: 36, borderRadius: 8, background: `rgba(${typeColor[f.type] === D.red ? "240,95,95" : typeColor[f.type] === D.cyan ? "0,212,255" : typeColor[f.type] === D.purple ? "155,100,255" : typeColor[f.type] === D.green ? "62,207,142" : "255,107,43"},0.1)`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1rem", flexShrink: 0 }}>{typeIcon[f.type] || "📁"}</div>
-                  {/* Info */}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: ".85rem", fontWeight: 500, color: D.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{f.name}</div>
                     <div style={{ display: "flex", gap: ".5rem", alignItems: "center", marginTop: ".25rem", flexWrap: "wrap" }}>
@@ -762,10 +893,9 @@ const DataView = () => {
                       <div style={{ display: "flex", alignItems: "center", gap: ".3rem", fontSize: ".72rem", color: D.muted }}><ProdIc size={11} color={D.orange} />{f.product}</div>
                     </div>
                   </div>
-                  {/* Date + Delete */}
                   <div style={{ display: "flex", alignItems: "center", gap: ".7rem", flexShrink: 0 }}>
                     <span style={{ fontSize: ".72rem", color: D.muted }}>{f.uploadedAt}</span>
-                    <button onClick={() => setFiles(prev => prev.filter(x => x.id !== f.id))} style={{ background: "transparent", border: `1px solid ${D.border}`, borderRadius: 7, padding: ".3rem .45rem", transition: "all .2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = D.red; e.currentTarget.style.background = "rgba(240,95,95,0.08)"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = D.border; e.currentTarget.style.background = "transparent"; }}><TrashIc size={13} /></button>
+                    <button onClick={() => handleDelete(selectedProductId, f.id)} style={{ background: "transparent", border: `1px solid ${D.border}`, borderRadius: 7, padding: ".3rem .45rem", transition: "all .2s" }} onMouseEnter={e => { e.currentTarget.style.borderColor = D.red; e.currentTarget.style.background = "rgba(240,95,95,0.08)"; }} onMouseLeave={e => { e.currentTarget.style.borderColor = D.border; e.currentTarget.style.background = "transparent"; }}><TrashIc size={13} /></button>
                   </div>
                 </div>
               ))}
@@ -778,10 +908,24 @@ const DataView = () => {
 
 // ─── USE CODE VIEW (client-facing, not technical) ──────────────────────────────
 const UseCodeView = () => {
-  const { client } = useDash();
+  const { client, onToggleCode } = useDash();
   const [copied, setCopied] = useState(false);
-  const [codeActive, setCodeActive] = useState(true);
+  const [codeActive, setCodeActive] = useState(client.codeIsValid !== false);
+  const [toggling, setToggling] = useState(false);
+
+  useEffect(() => { setCodeActive(client.codeIsValid !== false); }, [client.codeIsValid]);
+
   const copyCode = () => { navigator.clipboard?.writeText(client.useCode).catch(() => {}); setCopied(true); setTimeout(() => setCopied(false), 2200); };
+
+  const handleToggle = async () => {
+    if (!onToggleCode) return;
+    setToggling(true);
+    try {
+      const res = await onToggleCode();
+      setCodeActive(res.is_valid);
+    } catch (e) { /* keep current state on error */ }
+    finally { setToggling(false); }
+  };
   const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.6rem 1.8rem" };
 
   const DEACTIVATION_REASONS = [
@@ -808,7 +952,7 @@ const UseCodeView = () => {
           {/* Toggle */}
           <div style={{ display: "flex", alignItems: "center", gap: ".75rem" }}>
             <span style={{ fontSize: ".82rem", color: D.muted }}>{codeActive ? "Active" : "Paused"}</span>
-            <button onClick={() => setCodeActive(!codeActive)} style={{ width: 52, height: 28, borderRadius: 14, border: "none", cursor: "pointer", background: codeActive ? D.green : "rgba(107,122,148,0.2)", position: "relative", transition: "background .3s" }}>
+            <button onClick={handleToggle} disabled={toggling} style={{ width: 52, height: 28, borderRadius: 14, border: "none", cursor: toggling ? "wait" : "pointer", background: codeActive ? D.green : "rgba(107,122,148,0.2)", position: "relative", transition: "background .3s", opacity: toggling ? 0.6 : 1 }}>
               <div style={{ position: "absolute", top: 3, left: codeActive ? 27 : 3, width: 22, height: 22, borderRadius: "50%", background: codeActive ? D.bg : D.muted, transition: "left .3s", boxShadow: "0 1px 4px rgba(0,0,0,.5)" }} />
             </button>
           </div>
@@ -863,34 +1007,122 @@ const UseCodeView = () => {
   );
 };
 
-// ─── WORKFLOW / AUTOMATION VIEW (client-facing status, no internals) ───────────
-const WorkflowView = () => {
+// ─── ORDERS / CRM VIEW ─────────────────────────────────────────────────────────
+const OrdersView = () => {
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState({ total: 0, pending: 0, confirmed: 0, delivered: 0, cancelled: 0 });
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [loading, setLoading] = useState(true);
   const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" };
 
+  const STATUS_COLOR = { pending: D.orange, confirmed: D.cyan, delivered: D.green, cancelled: D.red };
+
+  const loadOrders = () => {
+    Promise.all([
+      fetchOrders().then(d => setOrders(transformOrders(d))).catch(() => {}),
+      fetchOrderStats().then(d => setStats(d)).catch(() => {}),
+    ]).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadOrders();
+    const poll = setInterval(loadOrders, 30_000);
+    return () => clearInterval(poll);
+  }, []);
+
+  const filtered = statusFilter === "all" ? orders : orders.filter(o => o.status === statusFilter);
+
+  const handleStatusChange = async (id, newStatus) => {
+    try {
+      await updateOrderStatus(id, newStatus);
+      setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus } : o));
+      setStats(prev => ({ ...prev }));
+    } catch (e) {}
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem", animation: "fadeUp .5s ease" }}>
+      {/* Stats */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: "1rem" }}>
+        {[
+          { label: "Total Orders",   value: stats.total,     color: D.cyan,   sub: "All time" },
+          { label: "Pending",        value: stats.pending,   color: D.orange, sub: "Awaiting action" },
+          { label: "Confirmed",      value: stats.confirmed, color: D.purple, sub: "Ready to ship" },
+          { label: "Delivered",      value: stats.delivered, color: D.green,  sub: "Completed" },
+        ].map((s, i) => <StatCard key={s.label} label={s.label} value={String(s.value ?? 0)} sub={s.sub} color={s.color} delay={`${i * 0.06}s`} icon={<ProdIc size={16} color={s.color} />} />)}
+      </div>
+
+      {/* Filter tabs */}
+      <div style={{ display: "flex", gap: ".5rem" }}>
+        {["all", "pending", "confirmed", "delivered", "cancelled"].map(f => (
+          <button key={f} onClick={() => setStatusFilter(f)} style={{ padding: ".4rem .9rem", borderRadius: 100, border: `1px solid ${statusFilter === f ? (STATUS_COLOR[f] || D.cyan) : D.border}`, background: statusFilter === f ? `rgba(${f === "all" ? "0,212,255" : f === "pending" ? "255,107,43" : f === "confirmed" ? "0,212,255" : f === "delivered" ? "62,207,142" : "240,95,95"},0.08)` : "transparent", color: statusFilter === f ? (STATUS_COLOR[f] || D.cyan) : D.muted, fontSize: ".78rem", fontWeight: 600, cursor: "pointer", transition: "all .2s", textTransform: "capitalize" }}>{f === "all" ? "All" : f}</button>
+        ))}
+      </div>
+
+      {/* Order list */}
+      <div style={card}>
+        <SectionHead icon={<ProdIc size={16} color={D.orange} />} title="Orders" action={<Badge label={`${filtered.length} orders`} color={D.muted} />} />
+        {loading ? (
+          <div style={{ textAlign: "center", padding: "2rem", color: D.muted }}>Loading orders...</div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "2rem", color: D.muted, fontSize: ".85rem", fontWeight: 300 }}>No orders yet. Orders collected by the AI will appear here automatically.</div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: ".75rem" }}>
+            {filtered.map((o, i) => (
+              <div key={o.id} style={{ background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 12, padding: "1rem 1.2rem", animation: `fadeUp .4s ${i * 0.05}s ease both` }}>
+                <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem", flexWrap: "wrap" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".92rem", color: D.text, marginBottom: ".3rem" }}>{o.customerName}</div>
+                    <div style={{ fontSize: ".82rem", color: D.cyan, fontWeight: 500, marginBottom: ".2rem" }}>{o.product} × {o.qty}</div>
+                    <div style={{ fontSize: ".78rem", color: D.muted, marginBottom: ".2rem" }}>{o.customerPhone} · {o.address}</div>
+                    <div style={{ fontSize: ".72rem", color: D.muted }}>{o.date}</div>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: ".5rem" }}>
+                    <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: ".95rem", color: D.orange }}>{Number(o.total).toLocaleString()} DZD</div>
+                    <select value={o.status} onChange={e => handleStatusChange(o.id, e.target.value)} style={{ background: `rgba(${o.status === "pending" ? "255,107,43" : o.status === "confirmed" ? "0,212,255" : o.status === "delivered" ? "62,207,142" : "240,95,95"},0.1)`, border: `1px solid ${STATUS_COLOR[o.status] || D.border}`, borderRadius: 7, padding: ".3rem .6rem", color: STATUS_COLOR[o.status] || D.text, fontSize: ".78rem", fontWeight: 600, cursor: "pointer" }}>
+                      {["pending", "confirmed", "delivered", "cancelled"].map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
+                    </select>
+                  </div>
+                </div>
+                {o.notes && <div style={{ marginTop: ".65rem", padding: ".55rem .8rem", background: D.surface, borderRadius: 8, fontSize: ".78rem", color: D.muted, borderLeft: `3px solid ${D.border}` }}>{o.notes}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── WORKFLOW / AUTOMATION VIEW (client-facing status, no internals) ───────────
+const WorkflowView = () => {
+  const { client, activity } = useDash();
+  const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" };
+  const auto = client.automation || {};
+
   const AUTOMATION_STATS = [
-    { label: "Uptime This Month",   value: "99.7%",  sub: "2h 11m total downtime",     color: D.green  },
-    { label: "Conversations Handled", value: "127",  sub: "100% by AI — no manual replies", color: D.cyan },
-    { label: "Avg. Response Time",  value: "1.4s",   sub: "From message received to reply",  color: D.purple },
-    { label: "Failed Deliveries",   value: "0",      sub: "All messages delivered",     color: D.green  },
+    { label: "Conversations Handled", value: String(client.conversations || 0), sub: "100% by AI — no manual replies", color: D.cyan  },
+    { label: "Messages Used",         value: String(client.msgsUsed || 0),       sub: `of ${(client.msgsLimit || 2000).toLocaleString()} limit`, color: D.orange },
+    { label: "Group Capacity",        value: client.groupSlot || "—",            sub: "Clients sharing this n8n node", color: D.purple },
+    { label: "Subscription",          value: client.isExpired ? "Expired" : client.isTrial ? "Trial" : "Active", sub: `Renews ${client.renewal}`, color: client.isExpired ? D.red : D.green },
   ];
+
+  const pageOk = auto.pageConnected;
+  const subOk = !client.isExpired;
+  const codeOk = client.codeIsValid !== false;
+  const n8nOk = auto.n8nWebhookSet;
 
   const HEALTH_CHECKS = [
-    { label: "Facebook Page Connection", status: "Connected",    ok: true  },
-    { label: "AI Agent",                 status: "Online",       ok: true  },
-    { label: "Message Automation",       status: "Running",      ok: true  },
-    { label: "Conversation Memory",      status: "Synced",       ok: true  },
-    { label: "Knowledge Base",           status: "3 files loaded", ok: true },
-    { label: "Subscription Status",      status: "Active",       ok: true  },
+    { label: "Facebook Page",      status: pageOk ? "Connected" : "Not connected", ok: pageOk },
+    { label: "AI Agent (n8n)",     status: n8nOk ? "Configured" : "Webhook not set", ok: n8nOk },
+    { label: "Activation Code",    status: codeOk ? "Active" : "Paused", ok: codeOk },
+    { label: "Subscription",       status: subOk ? "Active" : "Expired", ok: subOk },
+    { label: "Message Limit",      status: client.msgsUsed >= client.msgsLimit ? "Limit reached" : "Within limit", ok: client.msgsUsed < client.msgsLimit },
+    { label: "Group Assignment",   status: client.group !== "—" ? client.group : "Not assigned", ok: client.group !== "—" },
   ];
 
-  const RECENT_LOGS = [
-    { msg: "AI replied to +213 770 *** 421 in 1.2s",       time: "2m ago",  ok: true  },
-    { msg: "AI replied to +213 555 *** 089 in 0.9s",       time: "14m ago", ok: true  },
-    { msg: "Knowledge base updated — kaftan-colors.jpg",    time: "1h ago",  ok: true  },
-    { msg: "AI replied to +213 661 *** 334 in 1.6s",       time: "3h ago",  ok: true  },
-    { msg: "Message failed — customer blocked the number",  time: "5h ago",  ok: false },
-    { msg: "AI replied to +213 540 *** 118 in 1.1s",       time: "6h ago",  ok: true  },
-  ];
+  const allOk = HEALTH_CHECKS.every(h => h.ok);
+  const recentAutomationLogs = activity.filter(a => ["conversation_started", "message_sent", "ai_description"].includes(a.type)).slice(0, 6);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.4rem", animation: "fadeUp .5s ease" }}>
@@ -901,7 +1133,7 @@ const WorkflowView = () => {
 
       {/* Health checks */}
       <div style={card}>
-        <SectionHead icon={<svg width={16} height={16} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={6} stroke={D.green} strokeWidth={1.4} /><path d="M5 8l2 2 4-4" stroke={D.green} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" /></svg>} title="System Health" action={<Badge label="All Systems OK" color={D.green} />} />
+        <SectionHead icon={<svg width={16} height={16} viewBox="0 0 16 16" fill="none"><circle cx={8} cy={8} r={6} stroke={D.green} strokeWidth={1.4} /><path d="M5 8l2 2 4-4" stroke={D.green} strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" /></svg>} title="System Health" action={<Badge label={allOk ? "All Systems OK" : "Issues Detected"} color={allOk ? D.green : D.orange} />} />
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: ".65rem" }}>
           {HEALTH_CHECKS.map(({ label, status, ok }) => (
             <div key={label} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: ".7rem .95rem", background: D.surface2, border: `1px solid ${D.border}`, borderRadius: 10 }}>
@@ -915,14 +1147,16 @@ const WorkflowView = () => {
         </div>
       </div>
 
-      {/* Activity log */}
+      {/* Activity log — real data */}
       <div style={card}>
         <SectionHead icon={<BotIc size={16} />} title="Recent Automation Activity" />
         <div style={{ display: "flex", flexDirection: "column", gap: ".5rem" }}>
-          {RECENT_LOGS.map((l, i) => (
+          {recentAutomationLogs.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "1.5rem", color: D.muted, fontSize: ".82rem", fontWeight: 300 }}>No automation activity yet.</div>
+          ) : recentAutomationLogs.map((l, i) => (
             <div key={i} style={{ display: "flex", alignItems: "center", gap: ".85rem", padding: ".6rem .75rem", borderRadius: 9, transition: "background .15s" }} onMouseEnter={e => e.currentTarget.style.background = D.surface2} onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
-              <div style={{ width: 6, height: 6, borderRadius: "50%", background: l.ok ? D.green : D.red, flexShrink: 0 }} />
-              <span style={{ fontSize: ".82rem", color: D.text, fontWeight: 300, flex: 1, lineHeight: 1.55 }}>{l.msg}</span>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: l.color, flexShrink: 0 }} />
+              <span style={{ fontSize: ".82rem", color: D.text, fontWeight: 300, flex: 1, lineHeight: 1.55 }}>{l.text}</span>
               <span style={{ fontSize: ".72rem", color: D.muted, flexShrink: 0 }}>{l.time}</span>
             </div>
           ))}
@@ -953,6 +1187,51 @@ const WorkflowView = () => {
   );
 };
 
+// ─── TRIAL / EXPIRED BANNER ────────────────────────────────────────────────────
+const TrialBanner = ({ client, onNavigate }) => {
+  if (!client.isTrial && !client.isExpired) return null;
+
+  if (client.isExpired) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 9000, background: "rgba(4,8,15,0.96)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)" }}>
+        <div style={{ background: D.surface, border: `1px solid rgba(240,95,95,0.3)`, borderRadius: 20, padding: "2.5rem 2.8rem", maxWidth: 460, width: "90%", textAlign: "center" }}>
+          <div style={{ width: 56, height: 56, borderRadius: "50%", background: "rgba(240,95,95,0.12)", border: `1px solid rgba(240,95,95,0.3)`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 1.4rem", fontSize: "1.6rem" }}>⏰</div>
+          <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.35rem", color: D.text, marginBottom: ".6rem" }}>Trial Expired</div>
+          <div style={{ fontSize: ".88rem", color: D.muted, lineHeight: 1.7, marginBottom: "1.8rem" }}>
+            Your free trial has ended. Upgrade to continue using AI automation for your store.
+          </div>
+          <button
+            onClick={() => onNavigate && onNavigate("subscription")}
+            style={{ background: "linear-gradient(135deg,#f05f5f,#c03030)", border: "none", borderRadius: 10, padding: ".85rem 2rem", color: "#fff", fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".9rem", cursor: "pointer", width: "100%" }}
+          >
+            View Plans & Upgrade
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (client.isTrial && client.daysUntilTrialEnd !== null && client.daysUntilTrialEnd <= 7) {
+    const urgent = client.daysUntilTrialEnd <= 2;
+    return (
+      <div style={{ margin: "0 0 1.2rem", padding: ".85rem 1.2rem", background: urgent ? "rgba(240,95,95,0.08)" : "rgba(255,107,43,0.08)", border: `1px solid ${urgent ? "rgba(240,95,95,0.3)" : "rgba(255,107,43,0.25)"}`, borderRadius: 12, display: "flex", alignItems: "center", gap: ".85rem" }}>
+        <span style={{ fontSize: "1.1rem" }}>{urgent ? "🚨" : "⚠️"}</span>
+        <div style={{ flex: 1 }}>
+          <span style={{ fontWeight: 600, color: urgent ? D.red : D.orange, fontSize: ".85rem" }}>
+            {client.daysUntilTrialEnd === 0 ? "Your trial expires today" : `Your trial ends in ${client.daysUntilTrialEnd} day${client.daysUntilTrialEnd === 1 ? "" : "s"}`}
+          </span>
+          <span style={{ color: D.muted, fontSize: ".82rem", marginLeft: ".5rem" }}>· Expires {client.trialEndsAt}</span>
+        </div>
+        <button onClick={() => onNavigate && onNavigate("subscription")} style={{ background: urgent ? D.red : D.orange, border: "none", borderRadius: 8, padding: ".45rem 1rem", color: "#fff", fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".78rem", cursor: "pointer", whiteSpace: "nowrap" }}>
+          Upgrade Now
+        </button>
+      </div>
+    );
+  }
+
+  return null;
+};
+
 // ─── MAIN DASHBOARD ────────────────────────────────────────────────────────────
 export default function DashboardPage({ onNavigate }) {
   const [activeTab, setActiveTab] = useState("overview");
@@ -960,6 +1239,7 @@ export default function DashboardPage({ onNavigate }) {
   const [products, setProducts] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [orders, setOrders] = useState([]);
 
   useEffect(() => {
     Promise.all([
@@ -967,11 +1247,13 @@ export default function DashboardPage({ onNavigate }) {
       fetchProducts().then(transformProducts).catch(() => []),
       fetchConversations().then(transformConversations).catch(() => []),
       fetchActivity().then(transformActivity).catch(() => []),
-    ]).then(([p, prods, convos, acts]) => {
+      fetchOrders().then(transformOrders).catch(() => []),
+    ]).then(([p, prods, convos, acts, ords]) => {
       setClient(p);
       setProducts(prods);
       setConversations(convos);
       setActivity(acts);
+      setOrders(ords);
     });
   }, []);
 
@@ -998,14 +1280,24 @@ export default function DashboardPage({ onNavigate }) {
 
   const onGenerateDescription = async (id) => {
     await generateDescription(id);
-    // Poll once after a short delay to pick up the async result
     setTimeout(async () => {
       const refreshed = await fetchProducts().then(transformProducts).catch(() => null);
       if (refreshed) setProducts(refreshed);
     }, 3000);
   };
 
-  const ctx = { client, products, conversations, activity, onLogout, onAddProduct, onDeleteProduct, onToggleProduct, onGenerateDescription };
+  const onToggleCode = async () => {
+    const res = await toggleActivationCode();
+    setClient(prev => ({ ...prev, codeIsValid: res.is_valid }));
+    return res;
+  };
+
+  const onUpdateOrderStatus = async (id, newStatus) => {
+    await updateOrderStatus(id, newStatus);
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus, statusDisplay: newStatus.charAt(0).toUpperCase() + newStatus.slice(1) } : o));
+  };
+
+  const ctx = { client, products, conversations, activity, orders, onLogout, onAddProduct, onDeleteProduct, onToggleProduct, onGenerateDescription, onToggleCode, onUpdateOrderStatus };
 
   const PAGE_META = {
     overview:      { title: "Dashboard Overview",      sub: `Welcome back, ${client.name} · ${client.plan} Plan`  },
@@ -1013,7 +1305,9 @@ export default function DashboardPage({ onNavigate }) {
     conversations: { title: "Customer Conversations",  sub: "AI-handled conversation summaries"                    },
     data:          { title: "Knowledge Base",          sub: "Files and documents your AI uses to answer questions" },
     usecode:       { title: "Activation Code",         sub: "Your account key — keep it private"                   },
+    orders:        { title: "Orders (CRM)",            sub: "Customer orders collected by your AI agent"           },
     workflow:      { title: "Automation Status",       sub: "Live health and activity of your AI agent"            },
+    payments:      { title: "Payment History",         sub: "Your subscription payment requests and their status"  },
   };
 
   return (
@@ -1024,14 +1318,17 @@ export default function DashboardPage({ onNavigate }) {
       <div style={{ display: "flex", minHeight: "100vh", position: "relative", zIndex: 2 }}>
         <Sidebar active={activeTab} onChange={setActiveTab} />
         <div style={{ flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflowX: "hidden" }}>
-          <TopBar pageTitle={PAGE_META[activeTab].title} pageSubtitle={PAGE_META[activeTab].sub} />
+          <TopBar pageTitle={PAGE_META[activeTab]?.title ?? ""} pageSubtitle={PAGE_META[activeTab]?.sub ?? ""} />
           <div style={{ flex: 1, padding: "1.8rem 2rem", overflowY: "auto" }}>
+            <TrialBanner client={client} onNavigate={onNavigate} />
             {activeTab === "overview"      && <OverviewView setActiveTab={setActiveTab} />}
             {activeTab === "products"      && <ProductsView />}
             {activeTab === "conversations" && <ConversationsView />}
             {activeTab === "data"          && <DataView />}
             {activeTab === "usecode"       && <UseCodeView />}
+            {activeTab === "orders"        && <OrdersView />}
             {activeTab === "workflow"      && <WorkflowView />}
+            {activeTab === "payments"      && <PaymentsView />}
           </div>
         </div>
       </div>

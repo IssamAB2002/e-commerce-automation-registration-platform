@@ -833,9 +833,9 @@ export default function HomePage() {
             Ecom<span>Auto</span> App
           </div>
           <div className="footer-links">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Docs</a>
+            <a href="#" onClick={e => { e.preventDefault(); navigateTo('privacy'); }}>Privacy</a>
+            <a href="#" onClick={e => { e.preventDefault(); navigateTo('terms'); }}>Terms</a>
+            <a href="#" onClick={e => { e.preventDefault(); navigateTo('cookies'); }}>Cookies</a>
             <a href="#">Contact</a>
           </div>
           <div className="footer-copy">

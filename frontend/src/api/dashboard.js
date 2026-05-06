@@ -7,6 +7,7 @@ export const fetchProducts = () => request('/api/products/')
 export const fetchConversations = (sentiment) =>
   request(`/api/conversations/${sentiment ? `?sentiment=${sentiment}` : ''}`)
 export const fetchActivity = () => request('/api/clients/me/activity/')
+export const fetchActivitySummary = () => request('/api/clients/me/activity/summary/')
 
 export const createProduct = (data) =>
   request('/api/products/', { method: 'POST', body: JSON.stringify(data) })
@@ -19,6 +20,37 @@ export const toggleProductStatus = (id) =>
 
 export const generateDescription = (id) =>
   request(`/api/products/${id}/generate-description/`, { method: 'POST' })
+
+// Product files
+export const fetchProductFiles = (productId) =>
+  request(`/api/products/${productId}/files/`)
+
+export const uploadProductFile = (productId, formData) =>
+  request(`/api/products/${productId}/files/`, {
+    method: 'POST',
+    body: formData,
+    headers: {},  // Let browser set Content-Type with boundary for multipart
+  })
+
+export const deleteProductFile = (productId, fileId) =>
+  request(`/api/products/${productId}/files/${fileId}/`, { method: 'DELETE' })
+
+// Activation code
+export const toggleActivationCode = () =>
+  request('/api/subscriptions/activation-code/toggle/', { method: 'PATCH' })
+
+// Subscription
+export const fetchSubscription = () => request('/api/subscriptions/me/')
+export const submitPaymentRequest = (data) =>
+  request('/api/subscriptions/payment-request/', { method: 'POST', body: JSON.stringify(data) })
+export const fetchPaymentRequests = () => request('/api/subscriptions/payment-request/')
+
+// CRM Orders
+export const fetchOrders = (statusFilter) =>
+  request(`/api/crm/orders/${statusFilter ? `?status=${statusFilter}` : ''}`)
+export const fetchOrderStats = () => request('/api/crm/orders/stats/')
+export const updateOrderStatus = (id, newStatus) =>
+  request(`/api/crm/orders/${id}/`, { method: 'PATCH', body: JSON.stringify({ status: newStatus }) })
 
 // ── Transformers — map API shapes to what the UI expects ──────────────────────
 
@@ -50,6 +82,15 @@ const ACTION_COLOR_MAP = {
   code_verified:        '#9b64ff',
   plan_upgraded:        '#3ecf8e',
   group_assigned:       '#6b7a94',
+  trial_expired:        '#f05f5f',
+  order_received:       '#3ecf8e',
+  order_updated:        '#ff6b2b',
+}
+
+function daysUntil(dateStr) {
+  if (!dateStr) return null
+  const diff = new Date(dateStr).getTime() - Date.now()
+  return Math.ceil(diff / (1000 * 60 * 60 * 24))
 }
 
 export function transformProfile(data) {
@@ -57,13 +98,20 @@ export function transformProfile(data) {
   const sub = data.subscription
   const usage = data.usage || {}
   const auto = data.automation_status || {}
+  const code = data.activation_code || {}
+
+  const trialEndsAt = sub?.trial_ends_at
+  const daysLeft = daysUntil(trialEndsAt)
+  const isExpired = sub?.is_active === false
+  const isTrial = sub?.is_trial || false
 
   return {
     name: data.company_name || `${data.first_name} ${data.last_name}`.trim() || 'My Store',
     email: data.email,
     plan: data.plan?.display || 'Starter',
     planName: data.plan?.name || 'starter',
-    useCode: data.use_code || '—',
+    useCode: data.use_code || code.code || '—',
+    codeIsValid: code.is_valid !== false,
     group: group ? `Group ${group.name}` : '—',
     groupSlot: group ? `${group.current_count} / ${group.capacity}` : '0 / 0',
     renewal: sub?.current_period_end ? formatDate(sub.current_period_end) : '—',
@@ -71,13 +119,17 @@ export function transformProfile(data) {
     msgsLimit: usage.messages_limit || 2000,
     conversations: usage.conversations || 0,
     joinedAt: formatDate(data.created_at),
-    codeStatus: 'active',
+    isTrial,
+    isExpired,
+    daysUntilTrialEnd: daysLeft,
+    trialEndsAt: trialEndsAt ? formatDate(trialEndsAt) : '—',
     automation: {
       aiAgent: auto.ai_agent || 'offline',
       pageConnected: auto.facebook_page_connected || false,
       messageHandler: auto.message_handler || 'idle',
       groupUsed: auto.group_capacity_used || 0,
       groupMax: auto.group_capacity_max || 0,
+      n8nWebhookSet: !!(group?.n8n_webhook_url),
     },
   }
 }
@@ -117,5 +169,23 @@ export function transformActivity(data) {
     text: a.description,
     time: timeAgo(a.created_at),
     color: ACTION_COLOR_MAP[a.action_type] || '#6b7a94',
+  }))
+}
+
+export function transformOrders(data) {
+  const results = data?.results ?? (Array.isArray(data) ? data : [])
+  return results.map((o) => ({
+    id: o.id,
+    customerName: o.customer_name,
+    customerPhone: o.customer_phone,
+    address: o.delivery_address,
+    product: o.product_name,
+    qty: o.quantity,
+    unitPrice: o.unit_price,
+    total: o.total_price,
+    status: o.status,
+    statusDisplay: o.status_display,
+    notes: o.notes || '',
+    date: formatDate(o.created_at),
   }))
 }

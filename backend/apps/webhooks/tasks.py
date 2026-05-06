@@ -3,10 +3,31 @@ from datetime import datetime, timezone
 from celery import shared_task
 from django.conf import settings
 from django.db.models import F
+from django.utils import timezone as tz
 
 import httpx
 
 logger = logging.getLogger(__name__)
+
+
+def _get_or_create_monthly_usage(client):
+    from apps.subscriptions.models import MonthlyUsage
+    now = tz.now()
+    usage, _ = MonthlyUsage.objects.get_or_create(
+        client=client,
+        year=now.year,
+        month=now.month,
+        defaults={'messages_used': 0},
+    )
+    return usage
+
+
+def _is_over_message_limit(client) -> bool:
+    if not client.plan:
+        return False
+    limit = client.plan.messages_limit
+    usage = _get_or_create_monthly_usage(client)
+    return usage.messages_used >= limit
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=5)
@@ -19,6 +40,7 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
     from apps.conversations.models import Conversation, Message
     from apps.activity.models import ActivityLog
     from apps.webhooks.models import WebhookLog
+    from apps.subscriptions.models import MonthlyUsage
 
     try:
         entry = payload.get('entry', [{}])[0]
@@ -35,7 +57,9 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
             return
 
         try:
-            page = FacebookPage.objects.select_related('client__group').get(page_id=page_id)
+            page = FacebookPage.objects.select_related('client__group', 'client__plan').get(
+                page_id=page_id
+            )
         except FacebookPage.DoesNotExist:
             logger.warning('Received message for unknown page_id: %s', page_id)
             if log_id:
@@ -45,6 +69,16 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
             return
 
         client = page.client
+
+        # Block if client has hit their monthly message limit
+        if _is_over_message_limit(client):
+            logger.warning('Message limit exceeded for client %s', client.id)
+            if log_id:
+                WebhookLog.objects.filter(id=log_id).update(
+                    status='failed', error_detail='message_limit_exceeded'
+                )
+            return
+
         group = client.group
         webhook_url = (
             group.n8n_webhook_url
@@ -66,8 +100,21 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
             response = http.post(webhook_url, json=forward_payload)
             response.raise_for_status()
 
+        # Increment monthly usage atomically
+        MonthlyUsage.objects.filter(
+            client=client,
+            year=tz.now().year,
+            month=tz.now().month,
+        ).update(messages_used=F('messages_used') + 1)
+
         # Record the conversation + message
         msg_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+
+        # Deduplicate by mid — Meta can redeliver the same message on retries
+        if mid and Message.objects.filter(mid=mid).exists():
+            logger.debug('Duplicate mid %s — skipping.', mid)
+            return
+
         convo, created = Conversation.objects.get_or_create(
             client=client,
             facebook_page=page,
@@ -92,8 +139,13 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
                 metadata={'sender_id': sender_id, 'page_id': page_id},
             )
 
+        # Trigger sentiment classification 90s after the message (debounce rapid exchanges)
+        from apps.conversations.tasks import classify_and_summarize_conversation
+        classify_and_summarize_conversation.apply_async(
+            args=[str(convo.id)], countdown=90
+        )
+
         if log_id:
-            from django.utils import timezone as tz
             WebhookLog.objects.filter(id=log_id).update(
                 status='forwarded',
                 forwarded_to=webhook_url,
@@ -106,10 +158,9 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
     except Exception as exc:
         logger.exception('Failed to process Facebook message: %s', exc)
         if log_id:
-            from django.db.models import F as dbF
             WebhookLog.objects.filter(id=log_id).update(
                 status='retrying',
-                attempts=dbF('attempts') + 1,
+                attempts=F('attempts') + 1,
                 error_detail=str(exc),
             )
         raise self.retry(exc=exc)

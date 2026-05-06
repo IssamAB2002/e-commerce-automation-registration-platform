@@ -15,6 +15,9 @@ class ActivityLog(models.Model):
         ('ai_description', 'AI Description Generated'),
         ('message_sent', 'Message Sent'),
         ('group_assigned', 'Group Assigned'),
+        ('trial_expired', 'Trial Expired'),
+        ('order_received', 'Order Received'),
+        ('order_updated', 'Order Updated'),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

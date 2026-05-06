@@ -60,6 +60,57 @@ class Subscription(models.Model):
         return f'{self.client} — {self.plan} ({self.billing_cycle})'
 
 
+class MonthlyUsage(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        'accounts.ClientProfile', on_delete=models.CASCADE, related_name='monthly_usage'
+    )
+    year = models.IntegerField()
+    month = models.IntegerField()
+    messages_used = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'monthly_usage'
+        unique_together = [('client', 'year', 'month')]
+        indexes = [models.Index(fields=['client', 'year', 'month'])]
+
+    def __str__(self):
+        return f'{self.client} — {self.year}/{self.month:02d} ({self.messages_used} msgs)'
+
+
+class PaymentRequest(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending Review'),
+        ('confirmed', 'Confirmed'),
+        ('rejected', 'Rejected'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client = models.ForeignKey(
+        'accounts.ClientProfile', on_delete=models.CASCADE, related_name='payment_requests'
+    )
+    plan = models.ForeignKey(Plan, on_delete=models.PROTECT)
+    billing_cycle = models.CharField(max_length=10, choices=Subscription.BILLING_CHOICES, default='monthly')
+    amount_dzd = models.DecimalField(max_digits=10, decimal_places=2)
+    ccp_or_rip = models.CharField(max_length=100, help_text="Client's CCP/RIP account number used to pay")
+    transfer_reference = models.CharField(max_length=200, help_text='CCP transfer reference number')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending', db_index=True)
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        'accounts.User', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='reviewed_payments'
+    )
+    admin_notes = models.TextField(blank=True)
+
+    class Meta:
+        db_table = 'payment_requests'
+        ordering = ['-submitted_at']
+
+    def __str__(self):
+        return f'{self.client} — {self.plan} ({self.status})'
+
+
 class ActivationCode(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     client = models.OneToOneField(

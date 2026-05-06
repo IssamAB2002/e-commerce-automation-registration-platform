@@ -1,3 +1,4 @@
+import os
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -6,8 +7,8 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 from shared.permissions import IsClientOwner
 from apps.activity.models import ActivityLog
-from .models import Product
-from .serializers import ProductSerializer
+from .models import Product, ProductFile, ALLOWED_EXTENSIONS_BY_PLAN
+from .serializers import ProductSerializer, ProductFileSerializer
 from .tasks import generate_product_description
 
 
@@ -113,3 +114,100 @@ class ProductGenerateDescriptionView(APIView):
         task = generate_product_description.delay(str(product.id))
         return Response({'task_id': task.id, 'message': 'Description generation started.'},
                         status=status.HTTP_202_ACCEPTED)
+
+
+class ProductFileListUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def get(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk, client=request.user.profile)
+        except Product.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+
+        files = ProductFile.objects.filter(product=product)
+        serializer = ProductFileSerializer(files, many=True, context={'request': request})
+
+        # Compute total storage used by this client
+        from django.db.models import Sum
+        used_bytes = ProductFile.objects.filter(client=request.user.profile).aggregate(
+            total=Sum('file_size')
+        )['total'] or 0
+        plan = request.user.profile.plan
+        limit_bytes = plan.file_upload_limit if plan else 5 * 1024 * 1024
+
+        return Response({
+            'results': serializer.data,
+            'storage': {
+                'used_bytes': used_bytes,
+                'limit_bytes': limit_bytes,
+                'used_mb': round(used_bytes / (1024 * 1024), 2),
+                'limit_mb': round(limit_bytes / (1024 * 1024), 2),
+            },
+        })
+
+    def post(self, request, pk):
+        try:
+            product = Product.objects.get(pk=pk, client=request.user.profile)
+        except Product.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+
+        uploaded_file = request.FILES.get('file')
+        if not uploaded_file:
+            return Response({'error': 'No file provided.'}, status=400)
+
+        client = request.user.profile
+        plan = client.plan
+        plan_name = plan.name if plan else 'starter'
+
+        # Validate file extension
+        ext = os.path.splitext(uploaded_file.name)[1].lower()
+        allowed = ALLOWED_EXTENSIONS_BY_PLAN.get(plan_name, ['.txt'])
+        if ext not in allowed:
+            return Response(
+                {'error': f'File type "{ext}" not allowed on your plan. Allowed: {", ".join(allowed)}'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # Validate total storage limit
+        from django.db.models import Sum
+        used_bytes = ProductFile.objects.filter(client=client).aggregate(
+            total=Sum('file_size')
+        )['total'] or 0
+        limit_bytes = plan.file_upload_limit if plan else 5 * 1024 * 1024
+        if used_bytes + uploaded_file.size > limit_bytes:
+            limit_mb = round(limit_bytes / (1024 * 1024), 1)
+            return Response(
+                {'error': f'Storage limit of {limit_mb} MB exceeded. Upgrade your plan to upload more files.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        product_file = ProductFile.objects.create(
+            product=product,
+            client=client,
+            file=uploaded_file,
+            original_name=uploaded_file.name,
+            file_size=uploaded_file.size,
+        )
+        return Response(
+            ProductFileSerializer(product_file, context={'request': request}).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ProductFileDeleteView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk, file_id):
+        try:
+            product_file = ProductFile.objects.get(
+                id=file_id, product__pk=pk, client=request.user.profile
+            )
+        except ProductFile.DoesNotExist:
+            return Response({'error': 'Not found.'}, status=404)
+
+        # Remove the actual file from storage
+        product_file.file.delete(save=False)
+        product_file.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

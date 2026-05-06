@@ -44,7 +44,7 @@ class Message(models.Model):
     conversation = models.ForeignKey(Conversation, on_delete=models.CASCADE, related_name='messages')
     direction = models.CharField(max_length=10, choices=DIRECTION_CHOICES)
     text = models.TextField()
-    mid = models.CharField(max_length=200, blank=True)
+    mid = models.CharField(max_length=200, blank=True, db_index=True)
     timestamp = models.DateTimeField()
     delivered_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -52,3 +52,10 @@ class Message(models.Model):
     class Meta:
         db_table = 'messages'
         ordering = ['timestamp']
+        constraints = [
+            models.UniqueConstraint(
+                fields=['mid'],
+                condition=models.Q(mid__gt=''),
+                name='unique_nonempty_mid',
+            )
+        ]

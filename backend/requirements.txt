@@ -31,6 +31,12 @@ drf-spectacular==0.29.0
 django-redis==6.0.0
 whitenoise==6.8.2
 
+# Production server
+gunicorn==23.0.0
+
+# Error monitoring
+sentry-sdk[django,celery]==2.19.2
+
 # Django deps
 asgiref==3.11.1
 sqlparse==0.5.1

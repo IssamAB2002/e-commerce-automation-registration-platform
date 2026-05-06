@@ -35,6 +35,7 @@ INSTALLED_APPS = [
     'apps.activity.apps.ActivityConfig',
     'apps.webhooks.apps.WebhooksConfig',
     'apps.analytics.apps.AnalyticsConfig',
+    'apps.crm.apps.CrmConfig',
 ]
 
 MIDDLEWARE = [
@@ -123,6 +124,15 @@ REST_FRAMEWORK = {
     'PAGE_SIZE': 20,
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'EXCEPTION_HANDLER': 'shared.exceptions.custom_exception_handler',
+    'DEFAULT_THROTTLE_CLASSES': [
+        'rest_framework.throttling.AnonRateThrottle',
+        'rest_framework.throttling.UserRateThrottle',
+    ],
+    'DEFAULT_THROTTLE_RATES': {
+        'anon': '60/minute',
+        'user': '300/minute',
+        'auth': '10/minute',
+    },
 }
 
 # --- CORS ---
@@ -176,9 +186,35 @@ GEMINI_API_KEY = env('GEMINI_API_KEY', default='')
 # --- Frontend ---
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173')
 
+# --- Internal API ---
+INTERNAL_API_SECRET = env('INTERNAL_API_SECRET', default='')
+
 # --- Plan file upload limits (bytes) ---
 PLAN_FILE_LIMITS = {
     'starter': 5 * 1024 * 1024,
     'growth': 50 * 1024 * 1024,
     'pro': 500 * 1024 * 1024,
 }
+
+# --- Email ---
+EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = env.int('EMAIL_PORT', default=587)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='EcomAuto <no-reply@ecomauto.com>')
+ADMIN_EMAIL = env('ADMIN_EMAIL', default='')
+
+# --- Sentry ---
+_SENTRY_DSN = env('SENTRY_DSN', default='')
+if _SENTRY_DSN:
+    import sentry_sdk
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        integrations=[DjangoIntegration(), CeleryIntegration()],
+        traces_sample_rate=0.1,
+        send_default_pii=False,
+    )

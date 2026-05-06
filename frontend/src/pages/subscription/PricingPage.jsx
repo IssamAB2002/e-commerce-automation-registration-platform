@@ -10,11 +10,115 @@ import CompareTable from "../../components/pages/subscription/CompareTable.jsx";
 import GroupCalculator from "../../components/pages/subscription/GroupCalculator.jsx";
 import FAQList from "../../components/pages/subscription/FAQ.jsx";
 import TrustBadges from "../../components/pages/subscription/TrustBadges.jsx";
+import { isAuthenticated } from "../../api/client.js";
+import { submitPaymentRequest } from "../../api/dashboard.js";
+import { navigateTo } from "../../utils/navigation.js";
+import { toDzd, formatDA } from "../../utils/pages/subscription/money.js";
 import "../../styles/pages/subscription/subscription.css";
+
+function PaymentModal({ plan, billing, onClose }) {
+  const [ccp, setCcp] = useState("");
+  const [ref, setRef] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState(null);
+
+  const priceUsd = billing === "annual" ? plan.annualPrice : plan.monthlyPrice;
+  const priceDzd = toDzd(priceUsd);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!ccp.trim() || !ref.trim()) { setError("Both fields are required."); return; }
+    setSubmitting(true);
+    setError(null);
+    try {
+      await submitPaymentRequest({ plan: plan.id, billing_cycle: billing, ccp_or_rip: ccp.trim(), transfer_reference: ref.trim() });
+      setDone(true);
+    } catch (err) {
+      setError(err?.error || "Submission failed. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(4,8,15,0.92)", display: "flex", alignItems: "center", justifyContent: "center", backdropFilter: "blur(8px)", padding: "1rem" }} onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+      <div style={{ background: "#080d18", border: "1px solid rgba(0,212,255,0.2)", borderRadius: 20, padding: "2rem 2.4rem", maxWidth: 480, width: "100%", maxHeight: "90vh", overflowY: "auto" }}>
+        {done ? (
+          <div style={{ textAlign: "center", padding: "1.5rem 0" }}>
+            <div style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>✅</div>
+            <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.2rem", color: T.text, marginBottom: ".6rem" }}>Payment Request Submitted</div>
+            <div style={{ fontSize: ".88rem", color: T.muted, lineHeight: 1.7, marginBottom: "1.6rem" }}>
+              Your account will be activated within 24 hours after we confirm your transfer.
+            </div>
+            <button onClick={onClose} style={{ background: `linear-gradient(135deg,${T.cyan},#0099cc)`, border: "none", borderRadius: 10, padding: ".75rem 2rem", color: T.bg, fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".9rem", cursor: "pointer" }}>
+              Got it
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.5rem" }}>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 800, fontSize: "1.1rem", color: T.text }}>
+                Upgrade to {plan.name}
+              </div>
+              <button onClick={onClose} style={{ background: "transparent", border: "none", color: T.muted, fontSize: "1.3rem", cursor: "pointer", lineHeight: 1, padding: ".2rem .4rem" }}>×</button>
+            </div>
+
+            {/* Payment instructions */}
+            <div style={{ background: "rgba(0,212,255,0.04)", border: "1px solid rgba(0,212,255,0.15)", borderRadius: 12, padding: "1.1rem 1.3rem", marginBottom: "1.4rem" }}>
+              <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".82rem", color: T.cyan, marginBottom: ".8rem", textTransform: "uppercase", letterSpacing: ".06em" }}>Transfer Instructions</div>
+              <div style={{ display: "flex", flexDirection: "column", gap: ".55rem" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: ".78rem", color: T.muted }}>Account Name</span>
+                  <span style={{ fontSize: ".8rem", fontWeight: 600, color: T.text }}>EcomAuto SARL</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: ".78rem", color: T.muted }}>CCP</span>
+                  <span style={{ fontSize: ".8rem", fontWeight: 600, color: T.text, fontFamily: "monospace" }}>00123456789 clé 12</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: ".78rem", color: T.muted }}>RIP</span>
+                  <span style={{ fontSize: ".8rem", fontWeight: 600, color: T.text, fontFamily: "monospace" }}>00799999001234567890 12</span>
+                </div>
+                <div style={{ height: 1, background: "rgba(0,212,255,0.1)", margin: ".2rem 0" }} />
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: ".78rem", color: T.muted }}>Amount ({billing})</span>
+                  <span style={{ fontSize: ".9rem", fontWeight: 800, color: T.cyan }}>{formatDA(priceDzd)} DZD</span>
+                </div>
+              </div>
+              <div style={{ marginTop: ".8rem", fontSize: ".75rem", color: T.muted, background: "rgba(255,107,43,0.06)", border: "1px solid rgba(255,107,43,0.15)", borderRadius: 8, padding: ".5rem .7rem" }}>
+                Include your registered email as the transfer description.
+              </div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: ".9rem" }}>
+              <div>
+                <label style={{ fontSize: ".73rem", color: T.muted, fontWeight: 500, textTransform: "uppercase", letterSpacing: ".05em", display: "block", marginBottom: ".35rem" }}>Your CCP / RIP Number *</label>
+                <input value={ccp} onChange={e => setCcp(e.target.value)} placeholder="e.g. 00123456789 clé 05" style={{ width: "100%", boxSizing: "border-box", background: "#0d1525", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: ".7rem .9rem", color: T.text, fontSize: ".88rem", outline: "none" }} />
+              </div>
+              <div>
+                <label style={{ fontSize: ".73rem", color: T.muted, fontWeight: 500, textTransform: "uppercase", letterSpacing: ".05em", display: "block", marginBottom: ".35rem" }}>Transfer Reference / Receipt Number *</label>
+                <input value={ref} onChange={e => setRef(e.target.value)} placeholder="e.g. 240510-12345" style={{ width: "100%", boxSizing: "border-box", background: "#0d1525", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, padding: ".7rem .9rem", color: T.text, fontSize: ".88rem", outline: "none" }} />
+              </div>
+
+              {error && <div style={{ background: "rgba(240,95,95,0.08)", border: "1px solid rgba(240,95,95,0.2)", borderRadius: 8, padding: ".6rem .9rem", fontSize: ".82rem", color: "#f05f5f" }}>{error}</div>}
+
+              <button type="submit" disabled={submitting} style={{ background: `linear-gradient(135deg,${T.cyan},#0099cc)`, border: "none", borderRadius: 10, padding: ".85rem", color: T.bg, fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".9rem", cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.7 : 1 }}>
+                {submitting ? "Submitting…" : "Submit Payment Request"}
+              </button>
+            </form>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function SubscriptionPlatformPage() {
   const [billing, setBilling] = useState("monthly");
   const [scrolled, setScrolled] = useState(false);
+  const [paymentModal, setPaymentModal] = useState(null);
 
   useEffect(() => {
     const handler = () => setScrolled(window.scrollY > 40);
@@ -48,6 +152,7 @@ export default function SubscriptionPlatformPage() {
 
   return (
     <>
+      {paymentModal && <PaymentModal plan={paymentModal.plan} billing={paymentModal.billing} onClose={() => setPaymentModal(null)} />}
       <ParticleBackground />
       <Nav scrolled={scrolled} />
 
@@ -123,7 +228,13 @@ export default function SubscriptionPlatformPage() {
 
           <div className="sub-plans-grid">
             {PLANS.map((plan, i) => (
-              <PlanCard key={plan.id} plan={plan} billing={billing} idx={i} />
+              <PlanCard key={plan.id} plan={plan} billing={billing} idx={i} onCta={() => {
+                if (isAuthenticated()) {
+                  setPaymentModal({ plan, billing });
+                } else {
+                  navigateTo("signup");
+                }
+              }} />
             ))}
           </div>
 
