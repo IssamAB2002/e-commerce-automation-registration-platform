@@ -8,6 +8,7 @@ import {
   transformProfile, transformProducts, transformConversations, transformActivity, transformOrders,
 } from "../../api/dashboard.js";
 import { logout } from "../../api/auth.js";
+import { navigateTo } from "../../utils/navigation.js";
 
 // ─── DESIGN TOKENS ─────────────────────────────────────────────────────────────
 const D = {
@@ -86,9 +87,9 @@ const ParticleCanvas = () => {
       constructor() { this.reset(); }
       reset() {
         this.x = Math.random() * W; this.y = Math.random() * H;
-        this.vx = (Math.random() - 0.5) * 0.28; this.vy = (Math.random() - 0.5) * 0.28;
-        this.r = Math.random() * 1.3 + 0.3; this.a = Math.random() * 0.4 + 0.1;
-        this.c = Math.random() > 0.75;
+        this.vx = (Math.random() - 0.5) * 0.35; this.vy = (Math.random() - 0.5) * 0.35;
+        this.r = Math.random() * 2.2 + 0.8; this.a = Math.random() * 0.65 + 0.25;
+        this.c = Math.random() > 0.7;
       }
       update() { this.x += this.vx; this.y += this.vy; if (this.x < 0 || this.x > W || this.y < 0 || this.y > H) this.reset(); }
       draw() {
@@ -105,7 +106,7 @@ const ParticleCanvas = () => {
           const dx = pts[i].x - pts[j].x, dy = pts[i].y - pts[j].y, d = Math.sqrt(dx * dx + dy * dy);
           if (d < 110) {
             ctx.beginPath(); ctx.moveTo(pts[i].x, pts[i].y); ctx.lineTo(pts[j].x, pts[j].y);
-            ctx.strokeStyle = `rgba(0,212,255,${0.055 * (1 - d / 110)})`; ctx.lineWidth = 0.4; ctx.stroke();
+            ctx.strokeStyle = `rgba(0,212,255,${0.13 * (1 - d / 110)})`; ctx.lineWidth = 0.7; ctx.stroke();
           }
         }
       }
@@ -115,7 +116,7 @@ const ParticleCanvas = () => {
     go();
     return () => { cancelAnimationFrame(raf); window.removeEventListener("resize", resize); };
   }, []);
-  return <canvas ref={ref} style={{ position: "fixed", inset: 0, zIndex: 0, opacity: 0.35, pointerEvents: "none" }} />;
+  return <canvas ref={ref} style={{ position: "fixed", inset: 0, zIndex: 0, opacity: 0.65, pointerEvents: "none" }} />;
 };
 
 // ─── ICON HELPERS ──────────────────────────────────────────────────────────────
@@ -317,12 +318,12 @@ const SIDEBAR_ITEMS = [
 ];
 
 const Sidebar = ({ active, onChange }) => {
-  const { client, conversations, onLogout } = useDash();
+  const { client, conversations, onLogout, onNavigate } = useDash();
   const msgsUsedPct = Math.round((client.msgsUsed / (client.msgsLimit || 1)) * 100);
   return (
     <aside style={{ width: 240, flexShrink: 0, background: D.surface, borderRight: `1px solid ${D.border}`, display: "flex", flexDirection: "column", height: "100vh", position: "sticky", top: 0, overflow: "hidden" }}>
       <div style={{ padding: "1.4rem 1.4rem 1rem", borderBottom: `1px solid ${D.border}` }}>
-        <div style={{ display: "flex", alignItems: "center", gap: ".6rem" }}>
+        <div onClick={() => onNavigate ? onNavigate("home") : navigateTo("home")} style={{ display: "flex", alignItems: "center", gap: ".6rem", cursor: "pointer" }}>
           <svg width={28} height={28} viewBox="0 0 32 32" fill="none"><rect width={32} height={32} rx={8} fill="rgba(0,212,255,0.08)" /><path d="M8 16L14 10L20 16L26 10" stroke={D.cyan} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /><path d="M8 22L14 16L20 22L26 16" stroke={D.orange} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /><circle cx={16} cy={16} r={2.5} fill={D.cyan} /></svg>
           <span style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "1rem", color: D.text }}>Ecom<span style={{ color: D.cyan }}>Auto</span></span>
         </div>
@@ -373,7 +374,7 @@ const TopBar = ({ pageTitle, pageSubtitle }) => {
         <div style={{ fontSize: ".78rem", color: D.muted, fontWeight: 300, marginTop: ".1rem" }}>{pageSubtitle}</div>
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: ".8rem" }}>
-        <button style={{ width: 36, height: 36, borderRadius: 9, background: D.surface2, border: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", position: "relative" }} onMouseEnter={e => e.currentTarget.style.borderColor = D.cyan} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
+        <button type="button" title="Notifications — coming soon" onClick={e => e.stopPropagation()} style={{ width: 36, height: 36, borderRadius: 9, background: D.surface2, border: `1px solid ${D.border}`, display: "flex", alignItems: "center", justifyContent: "center", transition: "all .2s", position: "relative", cursor: "default" }} onMouseEnter={e => e.currentTarget.style.borderColor = D.borderHi} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
           <NotifIc />
           <span style={{ position: "absolute", top: 7, right: 7, width: 7, height: 7, borderRadius: "50%", background: D.cyan, animation: "pulse 2s infinite" }} />
         </button>
@@ -680,6 +681,7 @@ const ConversationsView = () => {
   const { conversations } = useDash();
   const [filter, setFilter] = useState("all");
   const [selectedConversation, setSelectedConversation] = useState(null);
+  const isLoading = conversations === null;
 
   const sentimentColor = { positive: D.green, neutral: D.cyan, negative: D.red };
   const sentimentLabel = { positive: "Positive", neutral: "Neutral", negative: "Negative" };
@@ -707,7 +709,18 @@ const ConversationsView = () => {
 
       {/* Conversation summary cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: ".85rem" }}>
-        {filtered.map((c, i) => (
+        {isLoading ? (
+          <div style={{ textAlign: "center", padding: "3rem", display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem" }}>
+            <div style={{ width: 28, height: 28, border: `2px solid ${D.border}`, borderTopColor: D.cyan, borderRadius: "50%", animation: "spin 1s linear infinite" }} />
+            <span style={{ color: D.muted, fontSize: ".85rem" }}>Loading conversations…</span>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div style={{ textAlign: "center", padding: "3rem", color: D.muted, fontSize: ".85rem", fontWeight: 300, lineHeight: 1.7 }}>
+            <div style={{ fontSize: "2rem", marginBottom: ".75rem" }}>💬</div>
+            {filter === "all" ? "No conversations yet. They will appear here once customers message your Facebook Page." : `No ${filter} conversations found.`}
+          </div>
+        ) : null}
+        {!isLoading && filtered.map((c, i) => (
           <div key={c.id} onClick={() => setSelectedConversation(c)} style={{ background: D.surface, border: `1px solid ${D.border}`, borderRadius: 14, padding: "1.2rem 1.4rem", display: "flex", alignItems: "flex-start", gap: "1.2rem", transition: "all .2s", animation: `fadeUp .4s ${i * 0.06}s ease both`, cursor: "pointer" }} onMouseEnter={e => e.currentTarget.style.borderColor = D.borderHi} onMouseLeave={e => e.currentTarget.style.borderColor = D.border}>
             {/* Sentiment dot */}
             <div style={{ width: 36, height: 36, borderRadius: 10, background: `rgba(${c.sentiment === "positive" ? "62,207,142" : c.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.1)`, border: `1px solid rgba(${c.sentiment === "positive" ? "62,207,142" : c.sentiment === "neutral" ? "0,212,255" : "240,95,95"},0.2)`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -1096,7 +1109,7 @@ const OrdersView = () => {
 
 // ─── WORKFLOW / AUTOMATION VIEW (client-facing status, no internals) ───────────
 const WorkflowView = () => {
-  const { client, activity } = useDash();
+  const { client, activity, onToggleCode, onNavigate } = useDash();
   const card = { background: D.surface, border: `1px solid ${D.border}`, borderRadius: 16, padding: "1.4rem 1.6rem" };
   const auto = client.automation || {};
 
@@ -1168,13 +1181,13 @@ const WorkflowView = () => {
         <SectionHead icon={<FlowIc size={16} color={D.purple} />} title="Quick Actions" />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: ".85rem" }}>
           {[
-            { label: "Pause Automation", desc: "Temporarily stop all AI replies", color: D.orange, icon: "⏸️" },
-            { label: "Contact Support",  desc: "Report an issue with your setup",  color: D.cyan,   icon: "🛠️" },
-            { label: "Upgrade Plan",     desc: "Increase message & storage limits", color: D.purple, icon: "⬆️" },
-          ].map(({ label, desc, color, icon }) => {
+            { label: "Pause Automation", desc: "Temporarily stop all AI replies", color: D.orange, icon: "⏸️", action: () => onToggleCode && onToggleCode() },
+            { label: "Contact Support",  desc: "Report an issue with your setup",  color: D.cyan,   icon: "🛠️", action: () => window.open("mailto:support@ecomauto.com") },
+            { label: "Upgrade Plan",     desc: "Increase message & storage limits", color: D.purple, icon: "⬆️", action: () => { if (onNavigate) onNavigate("pricing"); else navigateTo("pricing"); } },
+          ].map(({ label, desc, color, icon, action }) => {
             const rgb = color === D.orange ? "255,107,43" : color === D.cyan ? "0,212,255" : "155,100,255";
             return (
-              <button key={label} style={{ background: `rgba(${rgb},0.06)`, border: `1px solid rgba(${rgb},0.15)`, borderRadius: 12, padding: "1rem 1.1rem", textAlign: "left", transition: "all .2s", cursor: "pointer" }} onMouseEnter={e => { e.currentTarget.style.background = `rgba(${rgb},0.12)`; e.currentTarget.style.borderColor = `rgba(${rgb},0.3)`; }} onMouseLeave={e => { e.currentTarget.style.background = `rgba(${rgb},0.06)`; e.currentTarget.style.borderColor = `rgba(${rgb},0.15)`; }}>
+              <button key={label} onClick={action} style={{ background: `rgba(${rgb},0.06)`, border: `1px solid rgba(${rgb},0.15)`, borderRadius: 12, padding: "1rem 1.1rem", textAlign: "left", transition: "all .2s", cursor: "pointer" }} onMouseEnter={e => { e.currentTarget.style.background = `rgba(${rgb},0.12)`; e.currentTarget.style.borderColor = `rgba(${rgb},0.3)`; }} onMouseLeave={e => { e.currentTarget.style.background = `rgba(${rgb},0.06)`; e.currentTarget.style.borderColor = `rgba(${rgb},0.15)`; }}>
                 <div style={{ fontSize: "1.2rem", marginBottom: ".5rem" }}>{icon}</div>
                 <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: ".88rem", color, marginBottom: ".25rem" }}>{label}</div>
                 <div style={{ fontSize: ".75rem", color: D.muted, fontWeight: 300 }}>{desc}</div>
@@ -1240,6 +1253,7 @@ export default function DashboardPage({ onNavigate }) {
   const [conversations, setConversations] = useState([]);
   const [activity, setActivity] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
@@ -1254,6 +1268,7 @@ export default function DashboardPage({ onNavigate }) {
       setConversations(convos);
       setActivity(acts);
       setOrders(ords);
+      setLoading(false);
     });
   }, []);
 
@@ -1297,7 +1312,7 @@ export default function DashboardPage({ onNavigate }) {
     setOrders(prev => prev.map(o => o.id === id ? { ...o, status: newStatus, statusDisplay: newStatus.charAt(0).toUpperCase() + newStatus.slice(1) } : o));
   };
 
-  const ctx = { client, products, conversations, activity, orders, onLogout, onAddProduct, onDeleteProduct, onToggleProduct, onGenerateDescription, onToggleCode, onUpdateOrderStatus };
+  const ctx = { client, products, conversations, activity, orders, onLogout, onAddProduct, onDeleteProduct, onToggleProduct, onGenerateDescription, onToggleCode, onUpdateOrderStatus, onNavigate };
 
   const PAGE_META = {
     overview:      { title: "Dashboard Overview",      sub: `Welcome back, ${client.name} · ${client.plan} Plan`  },
@@ -1309,6 +1324,15 @@ export default function DashboardPage({ onNavigate }) {
     workflow:      { title: "Automation Status",       sub: "Live health and activity of your AI agent"            },
     payments:      { title: "Payment History",         sub: "Your subscription payment requests and their status"  },
   };
+
+  if (loading) return (
+    <div style={{ minHeight: "100vh", background: D.bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "1.2rem" }}>
+      <GlobalStyle />
+      <ParticleCanvas />
+      <div style={{ width: 40, height: 40, border: `3px solid ${D.border}`, borderTopColor: D.cyan, borderRadius: "50%", animation: "spin 1s linear infinite", position: "relative", zIndex: 2 }} />
+      <div style={{ fontFamily: "'Syne',sans-serif", fontWeight: 700, fontSize: "1rem", color: D.muted, position: "relative", zIndex: 2 }}>Loading your dashboard…</div>
+    </div>
+  );
 
   return (
     <DashCtx.Provider value={ctx}>

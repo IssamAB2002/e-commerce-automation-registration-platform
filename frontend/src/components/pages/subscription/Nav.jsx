@@ -1,7 +1,9 @@
 import { T } from '../../../design/pages/subscription/designTokens.js'
 import { hrefForPage, navigateTo } from '../../../utils/navigation.js'
+import { isAuthenticated } from '../../../api/client.js'
 
 export default function Nav({ scrolled }) {
+  const loggedIn = isAuthenticated()
   const linkStyle = {
     color: T.muted,
     fontSize: '.88rem',
@@ -101,10 +103,10 @@ export default function Nav({ scrolled }) {
             FAQ
           </a>
           <a
-            href={hrefForPage('signup')}
+            href={hrefForPage(loggedIn ? 'dashboard' : 'signup')}
             onClick={(e) => {
               e.preventDefault()
-              navigateTo('signup')
+              navigateTo(loggedIn ? 'dashboard' : 'signup')
             }}
             style={{
               background: T.cyan,
@@ -126,7 +128,7 @@ export default function Nav({ scrolled }) {
               e.currentTarget.style.boxShadow = 'none'
             }}
           >
-            Get Started →
+            {loggedIn ? 'Dashboard →' : 'Get Started →'}
           </a>
         </div>
       </div>

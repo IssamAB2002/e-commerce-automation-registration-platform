@@ -59,4 +59,4 @@ class ActivitySummaryView(APIView):
             return Response({'summary': summary})
         except Exception as exc:
             logger.exception('Failed to generate activity summary: %s', exc)
-            return Response({'summary': 'Could not generate summary at this time.'}, status=500)
+            return Response({'summary': 'Could not generate summary at this time.'})

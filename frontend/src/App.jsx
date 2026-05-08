@@ -12,7 +12,20 @@ import { getCurrentPage } from './utils/navigation.js'
 import { setTokens } from './api/client.js'
 
 function App() {
-  const [page, setPage] = useState(() => getCurrentPage())
+  // Store tokens synchronously during init so child effects find them immediately
+  const [page, setPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search)
+    const access = params.get('access')
+    const refresh = params.get('refresh')
+    const targetPage = params.get('page')
+    if (access && refresh) {
+      setTokens({ access, refresh })
+      const dest = targetPage === 'dashboard' ? '/dashboard' : '/signup'
+      window.history.replaceState({}, '', dest)
+      return targetPage || 'dashboard'
+    }
+    return getCurrentPage()
+  })
 
   const navigate = (targetPage) => {
     const path = targetPage === 'home' ? '/' : `/${targetPage}`
@@ -21,31 +34,12 @@ function App() {
   }
 
   useEffect(() => {
-    // Handle Facebook OAuth callback — backend redirects to
-    // /?page=dashboard&access=xxx&refresh=xxx  (or page=signup for new users)
     const params = new URLSearchParams(window.location.search)
-    const access = params.get('access')
-    const refresh = params.get('refresh')
-    const targetPage = params.get('page')
     const authError = params.get('auth_error')
-
-    if (access && refresh) {
-      setTokens({ access, refresh })
-      // Clean the URL so tokens don't stay in history
-      window.history.replaceState({}, '', targetPage === 'dashboard' ? '/dashboard' : '/signup')
-      setPage(targetPage || 'dashboard')
-      return
-    }
-
     if (authError) {
-      window.history.replaceState({}, '', '/signin')
+      window.history.replaceState({}, '', '/')
       setPage('signin')
-      return
     }
-
-    const onPop = () => setPage(getCurrentPage())
-    window.addEventListener('popstate', onPop)
-    return () => window.removeEventListener('popstate', onPop)
   }, [])
 
   useEffect(() => {

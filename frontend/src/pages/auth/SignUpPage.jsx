@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { T } from '../../design/pages/auth/designTokens.js'
 import ParticleBackground from '../../components/ParticleBackground.jsx'
 import AuthNav from '../../components/pages/auth/AuthNav.jsx'
@@ -6,7 +6,7 @@ import AuthInput from '../../components/pages/auth/AuthInput.jsx'
 import AuthButton from '../../components/pages/auth/AuthButton.jsx'
 import { navigateTo } from '../../utils/navigation.js'
 import { onboarding, getFacebookAuthUrl } from '../../api/auth.js'
-import { isAuthenticated } from '../../api/client.js'
+import { isAuthenticated, request } from '../../api/client.js'
 import '../../styles/pages/auth/auth.css'
 
 export default function SignUpPage({ onNavigate }) {
@@ -14,6 +14,14 @@ export default function SignUpPage({ onNavigate }) {
   const [errors, setErrors] = useState({})
   const [isLoading, setIsLoading] = useState(false)
   const [agreedToTerms, setAgreedToTerms] = useState(false)
+
+  // Redirect already-onboarded users straight to dashboard (prevents double-submit loops)
+  useEffect(() => {
+    if (!isAuthenticated()) return
+    request('/api/clients/me/')
+      .then(data => { if (data?.is_onboarded) { if (onNavigate) onNavigate('dashboard'); else navigateTo('dashboard') } })
+      .catch(() => {})
+  }, [])
 
   const [onboardingData, setOnboardingData] = useState({
     businessNiche: '',
@@ -367,11 +375,11 @@ export default function SignUpPage({ onNavigate }) {
                         }}
                       >
                         <option value="">Select range...</option>
-                        <option value="0-1000">$0 - $1,000</option>
-                        <option value="1000-5000">$1,000 - $5,000</option>
-                        <option value="5000-10000">$5,000 - $10,000</option>
-                        <option value="10000-50000">$10,000 - $50,000</option>
-                        <option value="50000+">$50,000+</option>
+                        <option value="0-10">$0 - $10 / mo</option>
+                        <option value="10-30">$10 - $30 / mo</option>
+                        <option value="30-100">$30 - $100 / mo</option>
+                        <option value="100-150">$100 - $150 / mo</option>
+                        <option value="150+">$150+ / mo</option>
                       </select>
                       {errors.monthlyAdSpend && (
                         <div className="auth-error">
@@ -407,6 +415,7 @@ export default function SignUpPage({ onNavigate }) {
                         <option value="">Select your goal...</option>
                         <option value="leads">Capture &amp; Qualify Leads</option>
                         <option value="sales">Drive Direct Sales</option>
+                        <option value="find_buyers">Find Buyers &amp; Grow Reach</option>
                         <option value="support">Customer Support Automation</option>
                         <option value="retargeting">Retargeting &amp; Follow-ups</option>
                         <option value="abandoned">Abandoned Cart Recovery</option>

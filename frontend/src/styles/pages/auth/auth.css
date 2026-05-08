@@ -169,6 +169,11 @@
   color: rgba(107, 122, 148, 0.6);
 }
 
+.auth-input option {
+  background: #0d1525;
+  color: #e8edf5;
+}
+
 .auth-input:focus {
   outline: none;
   border-color: rgba(0, 212, 255, 0.5);

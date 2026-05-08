@@ -483,3 +483,59 @@ class DeleteAccountView(APIView):
         except Exception:
             pass
         return Response({'success': True, 'message': 'Account deactivated. Contact support to permanently delete data.'})
+
+
+# ── n8n Internal API ─────────────────────────────────────────────────────────
+
+class N8nClientContextView(APIView):
+    """
+    Internal endpoint called by n8n to fetch client product catalog + business profile.
+    Not for browser use — secured by a shared secret header (X-N8N-Secret).
+    """
+    authentication_classes = []
+    permission_classes = []
+
+    def get(self, request):
+        import os
+        secret = request.headers.get('X-N8N-Secret', '')
+        if not secret or secret != os.environ.get('N8N_SECRET', ''):
+            return Response({'error': 'Unauthorized'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        client_id = request.query_params.get('client_id')
+        if not client_id:
+            return Response({'error': 'client_id required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            profile = ClientProfile.objects.select_related('plan').get(user__id=client_id)
+        except (ClientProfile.DoesNotExist, Exception):
+            return Response({'error': 'Client not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        from apps.products.models import Product
+        products = Product.objects.filter(
+            client=profile, status='active'
+        ).prefetch_related('files').order_by('name')
+
+        product_list = []
+        for p in products:
+            files = [
+                {
+                    'name': f.original_name,
+                    'url': request.build_absolute_uri(f.file.url),
+                }
+                for f in p.files.all()
+            ]
+            product_list.append({
+                'name':        p.name,
+                'price':       str(p.price),
+                'category':    p.get_category_display(),
+                'description': p.description,
+                'image_url':   request.build_absolute_uri(p.image.url) if p.image else None,
+                'files':       files,
+            })
+
+        return Response({
+            'company_name':   profile.company_name or '',
+            'business_niche': profile.business_niche or '',
+            'plan':           profile.plan.name if profile.plan else 'starter',
+            'products':       product_list,
+        })

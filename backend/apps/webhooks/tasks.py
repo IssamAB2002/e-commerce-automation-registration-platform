@@ -86,14 +86,30 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
             else settings.N8N_DEFAULT_WEBHOOK
         )
 
+        # Deduplicate by mid before any DB writes — Meta can redeliver the same message
+        if mid and Message.objects.filter(mid=mid).exists():
+            logger.debug('Duplicate mid %s — skipping.', mid)
+            return
+
+        msg_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+
+        # Create conversation FIRST so conversation_id is available for n8n
+        convo, created = Conversation.objects.get_or_create(
+            client=client,
+            facebook_page=page,
+            sender_fb_id=sender_id,
+        )
+
         forward_payload = {
-            'sender_id': sender_id,
-            'page_id': page_id,
-            'page_token': page.page_token,
-            'message_text': text,
-            'timestamp': timestamp_ms,
-            'client_id': str(client.user.id),
-            'group_name': group.name if group else None,
+            'sender_id':       sender_id,
+            'page_id':         page_id,
+            'page_token':      page.page_token,
+            'message_text':    text,
+            'timestamp':       timestamp_ms,
+            'client_id':       str(client.user.id),
+            'group_name':      group.name if group else None,
+            'conversation_id': str(convo.id),
+            'plan':            client.plan.name if client.plan else 'starter',
         }
 
         with httpx.Client(timeout=10) as http:
@@ -107,19 +123,7 @@ def process_facebook_message(self, payload: dict, log_id: str = None):
             month=tz.now().month,
         ).update(messages_used=F('messages_used') + 1)
 
-        # Record the conversation + message
-        msg_time = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-
-        # Deduplicate by mid — Meta can redeliver the same message on retries
-        if mid and Message.objects.filter(mid=mid).exists():
-            logger.debug('Duplicate mid %s — skipping.', mid)
-            return
-
-        convo, created = Conversation.objects.get_or_create(
-            client=client,
-            facebook_page=page,
-            sender_fb_id=sender_id,
-        )
+        # Record inbound message
         Message.objects.create(
             conversation=convo,
             direction='inbound',

@@ -53,7 +53,10 @@ async function refreshAccessToken() {
 
 export async function request(path, options = {}) {
   const { access } = getTokens()
-  const headers = { 'Content-Type': 'application/json', ...options.headers }
+  // Don't set Content-Type for FormData — browser sets it with the multipart boundary
+  const headers = options.body instanceof FormData
+    ? { ...options.headers }
+    : { 'Content-Type': 'application/json', ...options.headers }
   if (access) headers['Authorization'] = `Bearer ${access}`
 
   let res = await fetch(`${BASE}${path}`, { ...options, headers })
@@ -65,7 +68,7 @@ export async function request(path, options = {}) {
       res = await fetch(`${BASE}${path}`, { ...options, headers })
     } catch {
       clearTokens()
-      window.location.href = '/signin'
+      window.location.href = '/?page=signin'
       throw new Error('Session expired')
     }
   }

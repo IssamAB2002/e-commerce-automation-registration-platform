@@ -18,7 +18,10 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\COMTEL\\\\Desktop\\\\Professional Projects\\\\Ecom Auto Registration Platform\" -Directory)",
       "Bash(Select-Object Name)",
       "Bash(grep -E \"\\\\.py$|^d\")",
-      "Bash(python manage.py makemigrations conversations --name=\"add_unique_mid_constraint\")"
+      "Bash(python manage.py makemigrations conversations --name=\"add_unique_mid_constraint\")",
+      "Bash(.venv\\\\Scripts\\\\pip install *)",
+      "Bash(python -c \"import google.generativeai\")",
+      "Bash(pip show *)"
     ]
   }
 }

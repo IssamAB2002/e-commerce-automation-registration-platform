@@ -16,4 +16,5 @@ urlpatterns = [
     path('forgot-password/', views.ForgotPasswordView.as_view(), name='forgot-password'),
     path('reset-password/', views.ResetPasswordView.as_view(), name='reset-password'),
     path('delete-account/', views.DeleteAccountView.as_view(), name='delete-account'),
+    path('n8n/client-context/', views.N8nClientContextView.as_view(), name='n8n-client-context'),
 ]

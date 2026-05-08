@@ -136,7 +136,7 @@ REST_FRAMEWORK = {
 }
 
 # --- CORS ---
-CORS_ALLOWED_ORIGINS = [env('FRONTEND_URL', 'unadjourned-noncensurably-roberto.ngrok-free.dev' ,default='http://localhost:5173')]
+CORS_ALLOWED_ORIGINS = [env('FRONTEND_URL', default='http://localhost:5173')]
 CORS_ALLOW_CREDENTIALS = True
 
 # --- Celery ---
